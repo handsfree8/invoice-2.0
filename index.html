@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Rose Legacy — Invoices</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <img src="logo.png" alt="Rose Legacy Logo"/>
+    </div>
+    <div class="sidebar-brand">
+      <span class="brand-name">Rose Legacy</span>
+      <span class="brand-tagline">HVAC Services</span>
+    </div>
+    <div class="sidebar-nav">
+      <button class="nav-item active" data-section="invoice">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Invoice
+      </button>
+      <button class="nav-item" data-section="estimate">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-3"/><path d="M18 2l4 4-10 10H8v-4L18 2z"/></svg>
+        Estimate
+      </button>
+    </div>
+    <div class="sidebar-contact">
+      <div class="contact-item">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.9 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.89 6.89l1.08-1.08a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        816 298 4828
+      </div>
+      <div class="contact-item">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        appointments@roselegacyhvac.com
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- Top Bar -->
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">Invoice</div>
+      <div class="topbar-actions">
+        <label class="btn btn-ghost filelabel">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Load JSON
+          <input id="file-json" type="file" accept="application/json"/>
+        </label>
+        <button id="btn-save-json" class="btn btn-ghost">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save JSON
+        </button>
+        <button id="btn-generate" class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Invoice PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- INVOICE SECTION -->
+    <div id="section-invoice" class="section active">
+
+      <div class="section-grid">
+
+        <!-- Invoice Info -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Invoice Details</h2>
+            <span class="badge">Invoice</span>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">Invoice #</span>
+              <input id="inv-number" type="text" placeholder="000123" class="field-input"/>
+            </label>
+            <label class="field">
+              <span class="field-label">Date</span>
+              <input id="inv-date" type="date" class="field-input"/>
+            </label>
+            <label class="field field-full">
+              <span class="field-label">Client Name</span>
+              <input id="client-name" type="text" placeholder="Client name" class="field-input"/>
+            </label>
+          </div>
+        </div>
+
+        <!-- Payment & Terms -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Payment & Terms</h2>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">Payment Method</span>
+              <select id="payment-method" class="field-input">
+                <option>Cash</option>
+                <option>Card</option>
+                <option>Check</option>
+                <option>Zelle</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Terms</span>
+              <input id="terms" type="text" value="Paid in full" class="field-input"/>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Items Table -->
+      <div class="card card-wide">
+        <div class="card-header">
+          <h2>Line Items</h2>
+          <button id="btn-add" class="btn btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Item
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table id="items-table">
+            <thead>
+              <tr>
+                <th class="col-desc">Description</th>
+                <th class="col-num">Qty</th>
+                <th class="col-num">Unit Price</th>
+                <th class="col-num">Total</th>
+                <th class="col-action"></th>
+              </tr>
+            </thead>
+            <tbody id="items-body"></tbody>
+          </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="totals-block">
+          <div class="totals-inner">
+            <div class="totals-adjustments">
+              <label class="adj-field">
+                <span>Tax %</span>
+                <input id="tax-rate" type="number" min="0" step="0.01" value="0" class="adj-input"/>
+              </label>
+              <label class="adj-field">
+                <span>Discount %</span>
+                <input id="discount-rate" type="number" min="0" step="0.01" value="0" class="adj-input"/>
+              </label>
+            </div>
+            <div class="totals-summary">
+              <div class="totals-row">
+                <span>Subtotal</span>
+                <span id="subtotal">$0.00</span>
+              </div>
+              <div class="totals-row">
+                <span>Tax</span>
+                <span id="tax-amount">$0.00</span>
+              </div>
+              <div class="totals-row">
+                <span>Discount</span>
+                <span id="discount-amount">$0.00</span>
+              </div>
+              <div class="totals-row totals-due">
+                <span>Total Due</span>
+                <span id="total">$0.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes & Warranty -->
+      <div class="section-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2>Notes</h2>
+          </div>
+          <textarea id="notes" rows="4" placeholder="Internal notes (optional)" class="field-input textarea"></textarea>
+          <button id="btn-save-notes" class="btn btn-sm" style="margin-top:10px;">Save Notes</button>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Warranty Disclaimer</h2>
+          </div>
+          <textarea id="warranty-disclaimer" rows="4" class="field-input textarea"></textarea>
+          <button id="btn-save-disclaimer" class="btn btn-sm" style="margin-top:10px;">Save Disclaimer</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ESTIMATE SECTION -->
+    <div id="section-estimate" class="section">
+
+      <div class="card card-wide">
+        <div class="card-header">
+          <h2>Ball Park Estimate</h2>
+          <button id="btn-add-estimate" class="btn btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Item
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table id="estimate-table">
+            <thead>
+              <tr>
+                <th class="col-desc">Description</th>
+                <th class="col-num">Qty</th>
+                <th class="col-num">Unit Price</th>
+                <th class="col-num">Total</th>
+                <th class="col-action"></th>
+              </tr>
+            </thead>
+            <tbody id="estimate-body"></tbody>
+          </table>
+        </div>
+        <div class="totals-block">
+          <div class="totals-inner">
+            <div class="totals-adjustments"></div>
+            <div class="totals-summary">
+              <div class="totals-row">
+                <span>Subtotal</span>
+                <span id="estimate-subtotal">$0.00</span>
+              </div>
+              <div class="totals-row totals-due">
+                <span>Estimated Total</span>
+                <span id="estimate-total">$0.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+        <button id="btn-estimate-pdf" class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Estimate PDF
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      © <span id="year"></span> Rose Legacy Home Solutions LLC · Overland Park, KS
+    </footer>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
