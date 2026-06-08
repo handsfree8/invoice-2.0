@@ -48,7 +48,7 @@
     .status-overdue { background: #fdecea; color: #c0392b; }
     .block-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: #4a2080; margin: 22px 0 6px; }
     .block-text { font-size: 13.5px; color: #51495f; white-space: pre-wrap; line-height: 1.5; }
-    .actions { margin-top: 26px; display: flex; gap: 10px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .btn {
       border: none; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 600;
       cursor: pointer; font-family: inherit;
@@ -59,12 +59,20 @@
       background: #1e8e3e; color: #fff; text-decoration: none; display: inline-flex; align-items: center;
     }
     .btn-pay:hover { background: #197a35; }
+    .card-note {
+      margin-top: 14px; display: flex; gap: 10px; align-items: flex-start;
+      background: #f4f2f9; border: 1px solid #e3defa; border-radius: 10px;
+      padding: 12px 14px; font-size: 13px; color: #51495f; line-height: 1.5;
+    }
+    .card-note-icon { font-size: 18px; line-height: 1.4; }
+    .actions-wrap { margin-top: 26px; }
+    .actions-hint { margin-top: 8px; font-size: 12px; color: #9a93ab; }
     .footer-note { margin-top: 28px; font-size: 12px; color: #9a93ab; text-align: center; }
     .state { text-align: center; padding: 60px 20px; color: #74708a; }
     @media print {
       body { background: #fff; padding: 0; }
       .sheet { box-shadow: none; max-width: 100%; }
-      .actions { display: none; }
+      .actions-wrap, .card-note { display: none; }
     }
   </style>
 </head>
@@ -110,9 +118,17 @@
         render(data);
       });
 
+      // Approximate card-processing pass-through, shown only as an FYI to the
+      // client when they choose to pay by card (Stripe US standard: 2.9% + $0.30).
+      function cardTotal(amount) {
+        const amt = Number(amount || 0);
+        return (amt + 0.30) / (1 - 0.029);
+      }
+
       function render(inv) {
         const status = inv.payment_status || 'pending';
         const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const cardAmount = cardTotal(inv.total);
         const itemsRows = (inv.items || []).map(it => `
           <tr>
             <td>${escHtml(it.description)}</td>
@@ -148,14 +164,27 @@
             <div class="totals-row"><span>Discount (${Number(inv.discount_rate || 0)}%)</span><span>-${currency.format(Number(inv.discount_amount || 0))}</span></div>
             <div class="totals-row due"><span>Total Due</span><span>${currency.format(Number(inv.total || 0))}</span></div>
           </div>
+          ${inv.payment_link && status !== 'paid' ? `
+          <div class="card-note">
+            <span class="card-note-icon">💳</span>
+            <div>
+              <strong>Paying by card?</strong> A small card-processing fee applies if you choose to pay online with a card.
+              Card total: <strong>${currency.format(cardAmount)}</strong> (vs. ${currency.format(Number(inv.total || 0))} for cash, check, or Zelle).
+            </div>
+          </div>` : ''}
           ${inv.payment_method ? `<div class="block-title">Payment Method</div><div class="block-text">${escHtml(inv.payment_method)}${inv.terms ? ' · ' + escHtml(inv.terms) : ''}</div>` : ''}
           ${inv.warranty_disclaimer ? `<div class="block-title">Warranty Disclaimer</div><div class="block-text">${escHtml(inv.warranty_disclaimer)}</div>` : ''}
           ${inv.notes ? `<div class="block-title">Notes</div><div class="block-text">${escHtml(inv.notes)}</div>` : ''}
-          <div class="actions">
+          <div class="actions-wrap">
+            <div class="actions">
+              ${inv.payment_link && status !== 'paid'
+                ? `<a class="btn btn-pay" href="${escAttr(inv.payment_link)}" target="_blank" rel="noopener noreferrer">Pay with Card — ${currency.format(cardAmount)}</a>`
+                : ''}
+              <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
+            </div>
             ${inv.payment_link && status !== 'paid'
-              ? `<a class="btn btn-pay" href="${escAttr(inv.payment_link)}" target="_blank" rel="noopener noreferrer">Pay with Card</a>`
+              ? `<div class="actions-hint">Prefer to avoid the card fee? You can also pay by cash, check, or Zelle for ${currency.format(Number(inv.total || 0))}.</div>`
               : ''}
-            <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
           </div>
           <div class="footer-note">Thank you for choosing Rose Legacy Home Solutions LLC! Questions about this invoice? Call 816 298 4828 or email appointments@roselegacyhvac.com</div>
         `;
