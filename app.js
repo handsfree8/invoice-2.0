@@ -154,6 +154,32 @@
   });
   loadNotes();
 
+  /* ── Validation ──────────────────────────────────── */
+  // Returns a list of human-readable problems with the invoice, or an empty
+  // array if it's good to go. Keeps PDFs from going out incomplete (no client,
+  // no items, zero-value lines, etc).
+  function validateInvoice(data) {
+    const problems = [];
+
+    if (!data.invoice.number.trim()) problems.push('Add an invoice number.');
+    if (!data.invoice.client.trim()) problems.push('Add the client name.');
+    if (!data.invoice.date) problems.push('Add the invoice date.');
+
+    const items = data.items;
+    const hasUsableItem = items.some(it => it.description.trim() && it.qty > 0 && it.price > 0);
+    if (items.length === 0 || !hasUsableItem) {
+      problems.push('Add at least one line item with a description, quantity, and price.');
+    } else {
+      const incomplete = items.some(it =>
+        (it.description.trim() || it.qty > 0 || it.price > 0) &&
+        !(it.description.trim() && it.qty > 0 && it.price > 0)
+      );
+      if (incomplete) problems.push('Some line items are missing a description, quantity, or price.');
+    }
+
+    return problems;
+  }
+
   /* ── Data Collect / Load ─────────────────────────── */
   function collectData() {
     return {
@@ -272,6 +298,13 @@
   /* ── Download Invoice PDF ────────────────────────── */
   $('#btn-generate').addEventListener('click', () => {
     const data = collectData();
+
+    const problems = validateInvoice(data);
+    if (problems.length) {
+      showToast(problems[0]);
+      return;
+    }
+
     const calc = computeTotals();
     loadLogoForPDF(logoImg => {
       const { jsPDF } = window.jspdf;
@@ -477,6 +510,12 @@
   }
 
   /* ── Init ────────────────────────────────────────── */
+  // Default the invoice date to today so it doesn't have to be set manually
+  const invDateEl = $('#inv-date');
+  if (invDateEl && !invDateEl.value) {
+    invDateEl.value = new Date().toISOString().slice(0, 10);
+  }
+
   // Add one blank row to invoice if empty
   if (itemsBody.children.length === 0) addRow();
 
