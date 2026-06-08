@@ -505,3 +505,33 @@ td.line-total {
   .totals-inner { flex-direction: column; }
   .totals-summary { min-width: 100%; }
 }
+
+/* ── Login Overlay ───────────────────────────────── */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 25, 80, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.login-overlay.hidden { display: none; }
+.login-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 320px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  text-align: center;
+}
+.login-logo { width: 56px; height: 56px; object-fit: cover; border-radius: 12px; margin: 0 auto 4px; }
+.login-card h2 { margin: 0; font-family: 'DM Serif Display', serif; color: #4a2080; }
+.login-sub { margin: 0 0 6px; color: #74708a; font-size: 13px; }
+.login-card .field { text-align: left; }
+.login-btn { width: 100%; justify-content: center; margin-top: 4px; }
+.login-error { color: #c0392b; font-size: 13px; min-height: 16px; }

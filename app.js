@@ -6,6 +6,161 @@
   const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
   $('#year').textContent = new Date().getFullYear();
 
+  /* ── Supabase (auth + invoice history) ──────────── */
+  const SUPABASE_URL = 'https://mlkzuoxeepoqeygpklgj.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sa3p1b3hlZXBvcWV5Z3BrbGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Nzg1ODYsImV4cCI6MjA5NjQ1NDU4Nn0.aNpe29X_doX7brZEOg628JWxOefnwqVSvW3LUOWxFss';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const loginOverlay = $('#login-overlay');
+  const loginEmailEl = $('#login-email');
+  const loginPasswordEl = $('#login-password');
+  const loginErrorEl = $('#login-error');
+
+  function showApp() {
+    loginOverlay.classList.add('hidden');
+  }
+  function showLogin(message) {
+    loginOverlay.classList.remove('hidden');
+    if (message) loginErrorEl.textContent = message;
+  }
+
+  $('#btn-login').addEventListener('click', async () => {
+    loginErrorEl.textContent = '';
+    const email = loginEmailEl.value.trim();
+    const password = loginPasswordEl.value;
+    if (!email || !password) {
+      loginErrorEl.textContent = 'Enter your email and password.';
+      return;
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      loginErrorEl.textContent = error.message;
+      return;
+    }
+    loginPasswordEl.value = '';
+    showApp();
+  });
+
+  loginPasswordEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#btn-login').click();
+  });
+
+  $('#btn-logout').addEventListener('click', async () => {
+    await supabase.auth.signOut();
+    showLogin();
+  });
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (session) {
+      showApp();
+      loadHistory();
+    } else {
+      showLogin();
+    }
+  });
+
+  supabase.auth.getSession().then(({ data }) => {
+    if (data.session) {
+      showApp();
+      loadHistory();
+    } else {
+      showLogin();
+    }
+  });
+
+  /* ── Save invoice to history (Supabase) ──────────── */
+  async function saveInvoiceToHistory(data, calc) {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData && userData.user;
+      if (!user) return;
+
+      const { data: inserted, error: invErr } = await supabase
+        .from('invoices')
+        .insert({
+          user_id: user.id,
+          invoice_number: data.invoice.number || null,
+          invoice_date: data.invoice.date || null,
+          client_name: data.invoice.client || null,
+          payment_method: data.invoice.paymentMethod || null,
+          terms: data.invoice.terms || null,
+          notes: data.invoice.notes || null,
+          warranty_disclaimer: data.warrantyDisclaimer || null,
+          tax_rate: Number(data.invoice.taxRate || 0),
+          discount_rate: Number(data.invoice.discountRate || 0),
+          subtotal: calc.sub,
+          tax_amount: calc.tax,
+          discount_amount: calc.disc,
+          total: calc.total,
+        })
+        .select()
+        .single();
+
+      if (invErr) { console.error('Save invoice failed:', invErr); return; }
+
+      const items = data.items
+        .filter(it => it.description && it.description.trim())
+        .map((it, idx) => ({
+          invoice_id: inserted.id,
+          description: it.description,
+          qty: Number(it.qty || 0),
+          unit_price: Number(it.price || 0),
+          line_total: (Number(it.qty || 0)) * Number(it.price || 0),
+          position: idx,
+        }));
+
+      if (items.length) {
+        const { error: itemsErr } = await supabase.from('invoice_items').insert(items);
+        if (itemsErr) console.error('Save invoice items failed:', itemsErr);
+      }
+
+      loadHistory();
+    } catch (err) {
+      console.error('Unexpected error saving invoice history:', err);
+    }
+  }
+
+  /* ── History screen ──────────────────────────────── */
+  const historyBody = $('#history-body');
+  const historyEmpty = $('#history-empty');
+
+  async function loadHistory() {
+    if (!historyBody) return;
+    const { data: rows, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) {
+      console.error('Load history failed:', error);
+      return;
+    }
+
+    historyBody.innerHTML = '';
+    if (!rows || rows.length === 0) {
+      historyEmpty.style.display = '';
+      return;
+    }
+    historyEmpty.style.display = 'none';
+
+    rows.forEach(inv => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escHtml(inv.invoice_number || '—')}</td>
+        <td>${escHtml(inv.invoice_date || '—')}</td>
+        <td>${escHtml(inv.client_name || '—')}</td>
+        <td class="col-num">${currency.format(Number(inv.total || 0))}</td>
+        <td>${escHtml(inv.payment_method || '—')}</td>
+        <td class="col-action"></td>
+      `;
+      historyBody.appendChild(tr);
+    });
+  }
+
+  const refreshHistoryBtn = $('#btn-refresh-history');
+  if (refreshHistoryBtn) refreshHistoryBtn.addEventListener('click', loadHistory);
+
   function showToast(msg) {
     const t = $('#toast');
     t.textContent = msg;
@@ -22,7 +177,8 @@
       btn.classList.add('active');
       const key = btn.dataset.section;
       $('#section-' + key).classList.add('active');
-      $('#page-title').textContent = key === 'invoice' ? 'Invoice' : 'Ball Park Estimate';
+      $('#page-title').textContent = key === 'invoice' ? 'Invoice' : key === 'estimate' ? 'Ball Park Estimate' : 'Invoice History';
+      if (key === 'history') loadHistory();
     });
   });
 
@@ -443,6 +599,7 @@
 
       doc.save(`invoice-${data.invoice.number || dateStr}.pdf`);
       showToast('Invoice PDF downloaded ✓');
+      saveInvoiceToHistory(data, calc);
     });
   });
 
