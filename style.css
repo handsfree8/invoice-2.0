@@ -545,3 +545,6 @@ td.line-total {
 .status-pending { color: #b07d10; }
 .status-paid { color: #1e8e3e; }
 .status-overdue { color: #c0392b; }
+
+.btn-paylink { background: #ecf6ee; color: #1e8e3e; border: 1px solid #cdeed5; }
+.btn-paylink:hover { background: #d9efe0; }

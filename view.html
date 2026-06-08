@@ -55,6 +55,10 @@
     }
     .btn-primary { background: #4a2080; color: #fff; }
     .btn-primary:hover { background: #5b2a9c; }
+    .btn-pay {
+      background: #1e8e3e; color: #fff; text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .btn-pay:hover { background: #197a35; }
     .footer-note { margin-top: 28px; font-size: 12px; color: #9a93ab; text-align: center; }
     .state { text-align: center; padding: 60px 20px; color: #74708a; }
     @media print {
@@ -79,6 +83,11 @@
 
       function escHtml(str) {
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+      function escAttr(str) {
+        const s = String(str || '');
+        if (!/^https?:\/\//i.test(s)) return '#';
+        return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
       }
 
       function showState(msg) {
@@ -143,6 +152,9 @@
           ${inv.warranty_disclaimer ? `<div class="block-title">Warranty Disclaimer</div><div class="block-text">${escHtml(inv.warranty_disclaimer)}</div>` : ''}
           ${inv.notes ? `<div class="block-title">Notes</div><div class="block-text">${escHtml(inv.notes)}</div>` : ''}
           <div class="actions">
+            ${inv.payment_link && status !== 'paid'
+              ? `<a class="btn btn-pay" href="${escAttr(inv.payment_link)}" target="_blank" rel="noopener noreferrer">Pay with Card</a>`
+              : ''}
             <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
           </div>
           <div class="footer-note">Thank you for choosing Rose Legacy Home Solutions LLC! Questions about this invoice? Call 816 298 4828 or email appointments@roselegacyhvac.com</div>

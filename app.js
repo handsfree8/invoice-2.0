@@ -177,6 +177,7 @@
             <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="load">Load</button>
             <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="duplicate">Duplicate</button>
             <button class="btn btn-sm btn-link" data-id="${inv.id}">Copy Link</button>
+            <button class="btn btn-sm btn-paylink" data-id="${inv.id}" data-current="${escHtml(inv.payment_link || '')}">${inv.payment_link ? 'Edit Pay Link' : 'Add Pay Link'}</button>
             <button class="btn btn-sm btn-danger btn-delete" data-id="${inv.id}">Delete</button>
           </div>
         </td>
@@ -196,6 +197,30 @@
     historyBody.querySelectorAll('.btn-link').forEach(btn => {
       btn.addEventListener('click', () => copyInvoiceLink(btn.dataset.id));
     });
+    historyBody.querySelectorAll('.btn-paylink').forEach(btn => {
+      btn.addEventListener('click', () => setPaymentLink(btn.dataset.id, btn.dataset.current));
+    });
+  }
+
+  async function setPaymentLink(id, current) {
+    const url = window.prompt(
+      'Paste the Stripe / Square / PayPal payment link for this invoice (leave empty to remove it):',
+      current || ''
+    );
+    if (url === null) return; // cancelled
+    const trimmed = url.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      showToast('Please enter a valid link starting with http:// or https://');
+      return;
+    }
+    const { error } = await supabase.from('invoices').update({ payment_link: trimmed || null }).eq('id', id);
+    if (error) {
+      showToast('Could not save the payment link.');
+      console.error('Save payment link failed:', error);
+      return;
+    }
+    showToast(trimmed ? 'Payment link saved ✓ — clients will see a "Pay with Card" button.' : 'Payment link removed.');
+    loadHistory();
   }
 
   function copyInvoiceLink(id) {
