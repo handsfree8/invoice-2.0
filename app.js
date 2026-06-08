@@ -292,11 +292,11 @@
       doc.setTextColor(74, 32, 128);
       doc.text('INVOICE', left, y);
       doc.setTextColor(0, 0, 0);
-      doc.setFontSize(10);
+      doc.setFontSize(11);
       doc.setFont('helvetica', 'normal');
       const dateStr = data.invoice.date || new Date().toISOString().slice(0, 10);
-      doc.text(`Invoice #: ${data.invoice.number || '—'}`, right - 160, y - 10);
-      doc.text(`Date: ${dateStr}`, right - 160, y);
+      doc.text(`Invoice #: ${data.invoice.number || '—'}`, right - 160, y - 15);
+      doc.text(`Date: ${dateStr}`, right - 160, y + 1);
       y += 30; // clear separation between the title block and the client line
       doc.setFont('helvetica', 'bold');
       doc.text(`Client: `, left, y);
