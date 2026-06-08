@@ -330,11 +330,17 @@
       const rows = [
         ['Subtotal:', currency.format(calc.sub)],
         [`Tax (${data.invoice.taxRate || 0}%):`, currency.format(calc.tax)],
-        [`Discount (${data.invoice.discountRate || 0}%):`, '−' + currency.format(calc.disc)],
+        [`Discount (${data.invoice.discountRate || 0}%):`, '-' + currency.format(calc.disc)],
         ['Total Amount Due:', currency.format(calc.total)],
       ];
       rows.forEach((row, i) => {
         const isTotal = row[0].includes('Total Amount');
+        if (isTotal) {
+          // Separator line above the final total for visual hierarchy
+          doc.setDrawColor(225, 225, 230);
+          doc.setLineWidth(0.75);
+          doc.line(right - 180, endY + i * 16 - 11, right, endY + i * 16 - 11);
+        }
         doc.setFont('helvetica', isTotal ? 'bold' : 'normal');
         doc.setFontSize(isTotal ? 12 : 10);
         if (isTotal) doc.setTextColor(74, 32, 128);
@@ -379,6 +385,24 @@
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9.5);
         wrapText(doc, data.invoice.notes, 515).forEach(l => { doc.text(l, left, endY); endY += 13; });
+      }
+
+      // Closing block — anchored near the bottom of the page so short invoices
+      // don't end with a large empty gap below the content.
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const footerY = pageHeight - 70;
+      if (endY < footerY) {
+        doc.setDrawColor(74, 32, 128);
+        doc.setLineWidth(0.75);
+        doc.line(left, footerY, right, footerY);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(74, 32, 128);
+        doc.text('Thank you for choosing Rose Legacy Home Solutions LLC!', left, footerY + 18);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text('Questions about this invoice? Call 816 298 4828 or email appointments@roselegacyhvac.com', left, footerY + 32);
       }
 
       doc.save(`invoice-${data.invoice.number || dateStr}.pdf`);
