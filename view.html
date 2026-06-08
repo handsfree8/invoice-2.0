@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Rose Legacy — Invoice</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', sans-serif;
+      background: #f4f2f9;
+      color: #2b2640;
+      display: flex;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    .sheet {
+      background: #fff;
+      width: 100%;
+      max-width: 720px;
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(60, 40, 110, 0.12);
+      padding: 36px;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+    .brand img { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
+    .brand h1 { font-family: 'DM Serif Display', serif; color: #4a2080; font-size: 22px; margin: 0; }
+    .brand .sub { font-size: 12.5px; color: #74708a; }
+    hr { border: none; border-top: 2px solid #4a2080; margin: 18px 0; }
+    .meta-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+    .meta-row div span.label { display:block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #9a93ab; }
+    .meta-row div span.value { font-size: 15px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #ece9f4; }
+    th { background: #4a2080; color: #fff; font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+    td.num, th.num { text-align: right; }
+    .totals { margin-top: 14px; max-width: 280px; margin-left: auto; }
+    .totals-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    .totals-row.due { font-weight: 700; font-size: 16px; color: #4a2080; border-top: 1px solid #ece9f4; margin-top: 6px; padding-top: 8px; }
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .status-pending { background: #fdf3df; color: #b07d10; }
+    .status-paid { background: #e3f6e8; color: #1e8e3e; }
+    .status-overdue { background: #fdecea; color: #c0392b; }
+    .block-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: #4a2080; margin: 22px 0 6px; }
+    .block-text { font-size: 13.5px; color: #51495f; white-space: pre-wrap; line-height: 1.5; }
+    .actions { margin-top: 26px; display: flex; gap: 10px; }
+    .btn {
+      border: none; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-primary { background: #4a2080; color: #fff; }
+    .btn-primary:hover { background: #5b2a9c; }
+    .footer-note { margin-top: 28px; font-size: 12px; color: #9a93ab; text-align: center; }
+    .state { text-align: center; padding: 60px 20px; color: #74708a; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .sheet { box-shadow: none; max-width: 100%; }
+      .actions { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet" id="sheet">
+    <div class="state" id="loading-state">Loading invoice…</div>
+  </div>
+
+  <script>
+    (function () {
+      const SUPABASE_URL = 'https://mlkzuoxeepoqeygpklgj.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sa3p1b3hlZXBvcWV5Z3BrbGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Nzg1ODYsImV4cCI6MjA5NjQ1NDU4Nn0.aNpe29X_doX7brZEOg628JWxOefnwqVSvW3LUOWxFss';
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+      const sheet = document.getElementById('sheet');
+
+      function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      function showState(msg) {
+        sheet.innerHTML = `<div class="state">${escHtml(msg)}</div>`;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      if (!id) {
+        showState('No invoice was specified. Please use the link provided by Rose Legacy Home Solutions LLC.');
+        return;
+      }
+
+      supabase.rpc('public_invoice_lookup', { p_id: id }).then(({ data, error }) => {
+        if (error || !data) {
+          console.error(error);
+          showState('We could not load this invoice. The link may be invalid or expired.');
+          return;
+        }
+        render(data);
+      });
+
+      function render(inv) {
+        const status = inv.payment_status || 'pending';
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const itemsRows = (inv.items || []).map(it => `
+          <tr>
+            <td>${escHtml(it.description)}</td>
+            <td class="num">${escHtml(String(it.qty || 0))}</td>
+            <td class="num">${currency.format(Number(it.unit_price || 0))}</td>
+            <td class="num">${currency.format(Number(it.line_total || 0))}</td>
+          </tr>`).join('');
+
+        sheet.innerHTML = `
+          <div class="brand">
+            <img src="logo.png" alt="Rose Legacy Logo"/>
+            <div>
+              <h1>Rose Legacy Home Solutions LLC</h1>
+              <div class="sub">HVAC Services · Overland Park, KS · 816 298 4828 · appointments@roselegacyhvac.com</div>
+            </div>
+          </div>
+          <hr/>
+          <div class="meta-row">
+            <div><span class="label">Invoice #</span><span class="value">${escHtml(inv.invoice_number || '—')}</span></div>
+            <div><span class="label">Date</span><span class="value">${escHtml(inv.invoice_date || '—')}</span></div>
+            <div><span class="label">Client</span><span class="value">${escHtml(inv.client_name || '—')}</span></div>
+            <div><span class="label">Status</span><span class="status-badge status-${status}">${escHtml(statusLabel)}</span></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Description</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr>
+            </thead>
+            <tbody>${itemsRows || '<tr><td colspan="4" style="text-align:center;color:#9a93ab;">No line items</td></tr>'}</tbody>
+          </table>
+          <div class="totals">
+            <div class="totals-row"><span>Subtotal</span><span>${currency.format(Number(inv.subtotal || 0))}</span></div>
+            <div class="totals-row"><span>Tax (${Number(inv.tax_rate || 0)}%)</span><span>${currency.format(Number(inv.tax_amount || 0))}</span></div>
+            <div class="totals-row"><span>Discount (${Number(inv.discount_rate || 0)}%)</span><span>-${currency.format(Number(inv.discount_amount || 0))}</span></div>
+            <div class="totals-row due"><span>Total Due</span><span>${currency.format(Number(inv.total || 0))}</span></div>
+          </div>
+          ${inv.payment_method ? `<div class="block-title">Payment Method</div><div class="block-text">${escHtml(inv.payment_method)}${inv.terms ? ' · ' + escHtml(inv.terms) : ''}</div>` : ''}
+          ${inv.warranty_disclaimer ? `<div class="block-title">Warranty Disclaimer</div><div class="block-text">${escHtml(inv.warranty_disclaimer)}</div>` : ''}
+          ${inv.notes ? `<div class="block-title">Notes</div><div class="block-text">${escHtml(inv.notes)}</div>` : ''}
+          <div class="actions">
+            <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
+          </div>
+          <div class="footer-note">Thank you for choosing Rose Legacy Home Solutions LLC! Questions about this invoice? Call 816 298 4828 or email appointments@roselegacyhvac.com</div>
+        `;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -176,6 +176,7 @@
           <div class="history-actions">
             <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="load">Load</button>
             <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="duplicate">Duplicate</button>
+            <button class="btn btn-sm btn-link" data-id="${inv.id}">Copy Link</button>
             <button class="btn btn-sm btn-danger btn-delete" data-id="${inv.id}">Delete</button>
           </div>
         </td>
@@ -192,6 +193,20 @@
     historyBody.querySelectorAll('.btn-delete').forEach(btn => {
       btn.addEventListener('click', () => deleteInvoiceFromHistory(btn.dataset.id));
     });
+    historyBody.querySelectorAll('.btn-link').forEach(btn => {
+      btn.addEventListener('click', () => copyInvoiceLink(btn.dataset.id));
+    });
+  }
+
+  function copyInvoiceLink(id) {
+    const url = `${window.location.origin}/view.html?id=${id}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url)
+        .then(() => showToast('Shareable link copied ✓'))
+        .catch(() => showToast(url));
+    } else {
+      window.prompt('Copy this link to share with your client:', url);
+    }
   }
 
   async function updateInvoiceStatus(id, status, selectEl) {
