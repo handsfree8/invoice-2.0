@@ -249,7 +249,9 @@
     doc.setFont('helvetica', 'normal');
     doc.text('HVAC Services | Overland Park, KS', tx, y + 14);
     doc.text('Phone: 816 298 4828 | Email: appointments@roselegacyhvac.com', tx, y + 26);
-    return y + 56;
+    // Small gap below the logo/contact block so the accent line sits close to
+    // the header without overlapping the logo or text.
+    return y + 46;
   }
 
   function wrapText(doc, txt, maxWidth) {
@@ -277,11 +279,12 @@
       const left = 40, right = 555;
       let y = drawPDFHeader(doc, logoImg, 48);
 
-      // Purple accent line
+      // Purple accent line — sits right under the logo/header block, separating
+      // the company branding from the invoice details below.
       doc.setDrawColor(74, 32, 128);
       doc.setLineWidth(1.5);
       doc.line(left, y, right, y);
-      y += 18;
+      y += 34; // generous breathing room before the INVOICE title
 
       // Invoice title + meta
       doc.setFont('helvetica', 'bold');
@@ -294,7 +297,7 @@
       const dateStr = data.invoice.date || new Date().toISOString().slice(0, 10);
       doc.text(`Invoice #: ${data.invoice.number || '—'}`, right - 160, y - 10);
       doc.text(`Date: ${dateStr}`, right - 160, y);
-      y += 16;
+      y += 30; // clear separation between the title block and the client line
       doc.setFont('helvetica', 'bold');
       doc.text(`Client: `, left, y);
       doc.setFont('helvetica', 'normal');
