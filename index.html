@@ -285,6 +285,29 @@
           <h2>Invoice History</h2>
           <button id="btn-refresh-history" class="btn btn-sm">Refresh</button>
         </div>
+        <div class="form-grid" style="margin-bottom:14px;">
+          <label class="field">
+            <span class="field-label">Search Client</span>
+            <input id="history-filter-client" type="text" placeholder="Client name" class="field-input"/>
+          </label>
+          <label class="field">
+            <span class="field-label">From Date</span>
+            <input id="history-filter-from" type="date" class="field-input"/>
+          </label>
+          <label class="field">
+            <span class="field-label">To Date</span>
+            <input id="history-filter-to" type="date" class="field-input"/>
+          </label>
+          <label class="field">
+            <span class="field-label">Status</span>
+            <select id="history-filter-status" class="field-input">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </label>
+        </div>
         <div class="table-wrap">
           <table id="history-table">
             <thead>
@@ -294,6 +317,7 @@
                 <th>Client</th>
                 <th class="col-num">Total</th>
                 <th>Payment</th>
+                <th>Status</th>
                 <th class="col-action"></th>
               </tr>
             </thead>

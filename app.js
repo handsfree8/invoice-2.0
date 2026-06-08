@@ -126,40 +126,163 @@
 
   async function loadHistory() {
     if (!historyBody) return;
-    const { data: rows, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200);
+
+    const clientFilter = ($('#history-filter-client')?.value || '').trim().toLowerCase();
+    const fromFilter   = $('#history-filter-from')?.value || '';
+    const toFilter     = $('#history-filter-to')?.value || '';
+    const statusFilter = $('#history-filter-status')?.value || '';
+
+    let query = supabase.from('invoices').select('*').order('created_at', { ascending: false }).limit(200);
+    if (fromFilter) query = query.gte('invoice_date', fromFilter);
+    if (toFilter)   query = query.lte('invoice_date', toFilter);
+    if (statusFilter) query = query.eq('payment_status', statusFilter);
+
+    const { data: rows, error } = await query;
 
     if (error) {
       console.error('Load history failed:', error);
       return;
     }
 
+    let filtered = rows || [];
+    if (clientFilter) {
+      filtered = filtered.filter(inv => (inv.client_name || '').toLowerCase().includes(clientFilter));
+    }
+
     historyBody.innerHTML = '';
-    if (!rows || rows.length === 0) {
+    if (filtered.length === 0) {
       historyEmpty.style.display = '';
       return;
     }
     historyEmpty.style.display = 'none';
 
-    rows.forEach(inv => {
+    filtered.forEach(inv => {
       const tr = document.createElement('tr');
+      const status = inv.payment_status || 'pending';
       tr.innerHTML = `
         <td>${escHtml(inv.invoice_number || '—')}</td>
         <td>${escHtml(inv.invoice_date || '—')}</td>
         <td>${escHtml(inv.client_name || '—')}</td>
         <td class="col-num">${currency.format(Number(inv.total || 0))}</td>
         <td>${escHtml(inv.payment_method || '—')}</td>
-        <td class="col-action"></td>
+        <td>
+          <select class="status-select status-${status}" data-id="${inv.id}">
+            <option value="pending" ${status === 'pending' ? 'selected' : ''}>Pending</option>
+            <option value="paid" ${status === 'paid' ? 'selected' : ''}>Paid</option>
+            <option value="overdue" ${status === 'overdue' ? 'selected' : ''}>Overdue</option>
+          </select>
+        </td>
+        <td class="col-action">
+          <div class="history-actions">
+            <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="load">Load</button>
+            <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="duplicate">Duplicate</button>
+            <button class="btn btn-sm btn-danger btn-delete" data-id="${inv.id}">Delete</button>
+          </div>
+        </td>
       `;
       historyBody.appendChild(tr);
     });
+
+    historyBody.querySelectorAll('.status-select').forEach(sel => {
+      sel.addEventListener('change', () => updateInvoiceStatus(sel.dataset.id, sel.value, sel));
+    });
+    historyBody.querySelectorAll('.btn-load').forEach(btn => {
+      btn.addEventListener('click', () => loadInvoiceFromHistory(btn.dataset.id, btn.dataset.mode));
+    });
+    historyBody.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', () => deleteInvoiceFromHistory(btn.dataset.id));
+    });
+  }
+
+  async function updateInvoiceStatus(id, status, selectEl) {
+    const patch = { payment_status: status };
+    patch.paid_at = status === 'paid' ? new Date().toISOString() : null;
+    const { error } = await supabase.from('invoices').update(patch).eq('id', id);
+    if (error) {
+      showToast('Could not update status.');
+      console.error('Update status failed:', error);
+      return;
+    }
+    if (selectEl) {
+      selectEl.classList.remove('status-pending', 'status-paid', 'status-overdue');
+      selectEl.classList.add('status-' + status);
+    }
+    showToast('Status updated ✓');
+  }
+
+  async function deleteInvoiceFromHistory(id) {
+    if (!window.confirm('Delete this invoice from your history? This cannot be undone.')) return;
+    const { error } = await supabase.from('invoices').delete().eq('id', id);
+    if (error) {
+      showToast('Could not delete invoice.');
+      console.error('Delete invoice failed:', error);
+      return;
+    }
+    showToast('Invoice deleted from history.');
+    loadHistory();
+  }
+
+  async function loadInvoiceFromHistory(id, mode) {
+    const { data: inv, error: invErr } = await supabase.from('invoices').select('*').eq('id', id).single();
+    if (invErr || !inv) {
+      showToast('Could not load invoice.');
+      console.error('Load invoice failed:', invErr);
+      return;
+    }
+    const { data: items, error: itemsErr } = await supabase
+      .from('invoice_items')
+      .select('*')
+      .eq('invoice_id', id)
+      .order('position', { ascending: true });
+    if (itemsErr) console.error('Load invoice items failed:', itemsErr);
+
+    const isDuplicate = mode === 'duplicate';
+    const payload = {
+      invoice: {
+        number:        isDuplicate ? '' : (inv.invoice_number || ''),
+        date:          isDuplicate ? new Date().toISOString().slice(0, 10) : (inv.invoice_date || ''),
+        client:        inv.client_name || '',
+        taxRate:       Number(inv.tax_rate || 0),
+        discountRate:  Number(inv.discount_rate || 0),
+        paymentMethod: inv.payment_method || 'Cash',
+        terms:         inv.terms || '',
+        notes:         inv.notes || '',
+      },
+      items: (items || []).map(it => ({
+        description: it.description || '',
+        qty: Number(it.qty || 0),
+        price: Number(it.unit_price || 0),
+      })),
+      warrantyDisclaimer: inv.warranty_disclaimer || '',
+    };
+
+    loadData(payload);
+
+    // Switch to the Invoice tab so the user can review/edit/regenerate
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    const invoiceTab = document.querySelector('.nav-item[data-section="invoice"]');
+    if (invoiceTab) invoiceTab.classList.add('active');
+    $('#section-invoice').classList.add('active');
+    $('#page-title').textContent = 'Invoice';
+
+    showToast(isDuplicate ? 'Invoice duplicated — review and generate ✓' : 'Invoice loaded — review and regenerate ✓');
   }
 
   const refreshHistoryBtn = $('#btn-refresh-history');
   if (refreshHistoryBtn) refreshHistoryBtn.addEventListener('click', loadHistory);
+  ['history-filter-client', 'history-filter-from', 'history-filter-to', 'history-filter-status'].forEach(id => {
+    const el = $('#' + id);
+    if (el) el.addEventListener('change', loadHistory);
+  });
+  const historyClientFilterEl = $('#history-filter-client');
+  if (historyClientFilterEl) {
+    let debounceTimer;
+    historyClientFilterEl.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(loadHistory, 350);
+    });
+  }
 
   function showToast(msg) {
     const t = $('#toast');

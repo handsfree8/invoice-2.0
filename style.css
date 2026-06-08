@@ -535,3 +535,13 @@ td.line-total {
 .login-card .field { text-align: left; }
 .login-btn { width: 100%; justify-content: center; margin-top: 4px; }
 .login-error { color: #c0392b; font-size: 13px; min-height: 16px; }
+
+/* ── History row actions ─────────────────────────── */
+.history-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.history-actions .btn { padding: 5px 10px; font-size: 12px; }
+.btn-danger { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c0; }
+.btn-danger:hover { background: #f8d7d3; }
+.status-select { padding: 4px 6px; border-radius: 6px; border: 1px solid #ddd8e8; font-size: 12px; }
+.status-pending { color: #b07d10; }
+.status-paid { color: #1e8e3e; }
+.status-overdue { color: #c0392b; }
