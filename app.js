@@ -342,8 +342,31 @@
       $('#section-' + key).classList.add('active');
       $('#page-title').textContent = key === 'invoice' ? 'Invoice' : key === 'estimate' ? 'Ball Park Estimate' : 'Invoice History';
       if (key === 'history') loadHistory();
+      closeMobileSidebar();
     });
   });
+
+  /* ── Mobile Sidebar Toggle ────────────────────────── */
+  const sidebarEl = document.querySelector('.sidebar');
+  const sidebarBackdrop = $('#sidebar-backdrop');
+  const mobileMenuBtn = $('#mobile-menu-btn');
+
+  function openMobileSidebar() {
+    sidebarEl.classList.add('open');
+    sidebarBackdrop.classList.add('show');
+  }
+  function closeMobileSidebar() {
+    sidebarEl.classList.remove('open');
+    sidebarBackdrop.classList.remove('show');
+  }
+  if (mobileMenuBtn) {
+    mobileMenuBtn.addEventListener('click', () => {
+      sidebarEl.classList.contains('open') ? closeMobileSidebar() : openMobileSidebar();
+    });
+  }
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+  }
 
   /* ── Invoice Items ───────────────────────────────── */
   const itemsBody    = $('#items-body');
