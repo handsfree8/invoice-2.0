@@ -371,7 +371,7 @@
   }
 
   /* ── KPI / Analytics panel ───────────────────────── */
-  const STATUS_COLORS = { paid: '#2f9e44', pending: '#c9622a', overdue: '#c0392b' };
+  const STATUS_COLORS = { paid: '#2f9e44', pending: '#c9622a', overdue: '#c0392b', consolidated: '#7c4dff' };
 
   function monthKey(dateStr) {
     if (!dateStr) return null;
@@ -432,10 +432,12 @@
         if (mKey === thisMonthKey) invoicedMonthTotal += total;
         if (mKey === lastMonthKey) invoicedLastMonthTotal += total;
         if (mKey) monthTotals.set(mKey, (monthTotals.get(mKey) || 0) + total);
-      }
 
-      const clientName = (inv.client_name || 'Unknown').trim() || 'Unknown';
-      clientTotals.set(clientName, (clientTotals.get(clientName) || 0) + total);
+        // Exclude consolidated child invoices so client totals aren't double-counted
+        // (the consolidated parent invoice already carries their combined total).
+        const clientName = (inv.client_name || 'Unknown').trim() || 'Unknown';
+        clientTotals.set(clientName, (clientTotals.get(clientName) || 0) + total);
+      }
     });
 
     // Summary cards
@@ -726,7 +728,7 @@
       <div class="kpi-legend-item">
         <span class="kpi-legend-dot" style="background:${STATUS_COLORS[status] || 'var(--purple-mid)'}"></span>
         <span class="kpi-legend-label">${escHtml(status)}</span>
-        <span class="kpi-legend-value">${count}</span>
+        <span class="kpi-legend-value">${count} · ${Math.round((count / total) * 100)}%</span>
       </div>
     `).join('');
   }
