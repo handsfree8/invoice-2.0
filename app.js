@@ -7,8 +7,8 @@
   $('#year').textContent = new Date().getFullYear();
 
   /* ── Supabase (auth + invoice history) ──────────── */
-  const SUPABASE_URL = 'https://mlkzuoxeepoqeygpklgj.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sa3p1b3hlZXBvcWV5Z3BrbGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Nzg1ODYsImV4cCI6MjA5NjQ1NDU4Nn0.aNpe29X_doX7brZEOg628JWxOefnwqVSvW3LUOWxFss';
+  const SUPABASE_URL = 'https://wrlwhnjqnsfkpyihumqd.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_xmLLVF_W4gQIhIAewv5zRg_YgKAH3wI';
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const loginOverlay = $('#login-overlay');
@@ -18,6 +18,38 @@
 
   function showApp() {
     loginOverlay.classList.add('hidden');
+    prefillFromTicket();
+    prefillFromInvoiceParam();
+    prefillNextInvoiceNumber();
+  }
+
+  /* ── Auto-increment invoice number ───────────────── */
+  async function fetchNextInvoiceNumber() {
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('invoice_number')
+        .not('invoice_number', 'is', null);
+      if (error || !data || !data.length) return '000001';
+      // Compute the highest numeric value, ignoring prefixes like "INV-".
+      // String ordering is unreliable (e.g. "INV-000006" sorts above "000354"),
+      // so we parse the digits of each and take the numeric max.
+      let max = 0;
+      for (const row of data) {
+        const m = String(row.invoice_number || '').match(/(\d+)/);
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+      return String(max + 1).padStart(6, '0');
+    } catch { return '000001'; }
+  }
+
+  async function prefillNextInvoiceNumber() {
+    // Don't override when loading an existing invoice (?invoice=) or if user already typed one
+    if (new URLSearchParams(location.search).get('invoice')) return;
+    const el = $('#inv-number');
+    if (!el || el.value.trim()) return;
+    const next = await fetchNextInvoiceNumber();
+    if (!el.value.trim()) el.value = next;
   }
   function showLogin(message) {
     loginOverlay.classList.remove('hidden');
@@ -54,6 +86,7 @@
     if (session) {
       showApp();
       loadHistory();
+      loadKPIs();
     } else {
       showLogin();
     }
@@ -63,45 +96,120 @@
     if (data.session) {
       showApp();
       loadHistory();
+      loadKPIs();
     } else {
       showLogin();
     }
   });
 
+  /* ── Work-order link (?ticket=<uuid>) ────────────── */
+  let linkedTicketId = null;
+  let linkedPropertyId = null;
+  let ticketPrefilled = false;
+  // Tracks an already-saved invoice loaded from history, so re-downloading it
+  // doesn't insert a duplicate row. null = this is a brand-new invoice.
+  let loadedInvoiceId = null;
+
+  let invoicePrefilled = false;
+
+  async function prefillFromInvoiceParam() {
+    if (invoicePrefilled) return;
+    const invoiceId = new URLSearchParams(location.search).get('invoice');
+    if (!invoiceId) return;
+    invoicePrefilled = true;
+    try {
+      await loadInvoiceFromHistory(invoiceId, 'view');
+    } catch (err) {
+      console.error('Could not load invoice:', err);
+    }
+  }
+
+  async function prefillFromTicket() {
+    if (ticketPrefilled) return;
+    const ticketId = new URLSearchParams(location.search).get('ticket');
+    if (!ticketId) return;
+    ticketPrefilled = true;
+    try {
+      const { data: t, error } = await supabase
+        .from('tickets')
+        .select('id, title, unit_number, property_id, properties(name, address, city, state)')
+        .eq('id', ticketId)
+        .single();
+      if (error) throw error;
+      linkedTicketId = t.id;
+      linkedPropertyId = t.property_id;
+      const prop = t.properties;
+      const clientEl = $('#client-name');
+      if (prop && clientEl && !clientEl.value) clientEl.value = prop.name;
+      if (t.title) {
+        const firstDesc = itemsBody.querySelector('tr input.w');
+        const desc = t.title + (t.unit_number ? ` (Unit ${t.unit_number})` : '');
+        if (itemsBody.children.length === 0) {
+          addRow({ description: desc, qty: 1, price: 0 });
+        } else if (firstDesc && !firstDesc.value) {
+          firstDesc.value = desc;
+        }
+      }
+      if (typeof showToast === 'function') {
+        showToast(`Linked to work order: ${t.title}` + (prop ? ` — ${prop.name}` : ''));
+      }
+    } catch (err) {
+      console.error('Could not load linked work order:', err);
+    }
+  }
+
   /* ── Save invoice to history (Supabase) ──────────── */
   async function saveInvoiceToHistory(data, calc) {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData && userData.user;
-      if (!user) return;
+      // Use getSession() (reads from local storage, no network round-trip) instead
+      // of getUser() — on mobile/flaky connections getUser() can return null even
+      // with a valid session, which silently skipped the save.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData && sessionData.session && sessionData.session.user;
+      if (!user) {
+        showToast('Not signed in — please log in to save.');
+        return;
+      }
 
-      const { data: inserted, error: invErr } = await supabase
-        .from('invoices')
-        .insert({
-          user_id: user.id,
-          invoice_number: data.invoice.number || null,
-          invoice_date: data.invoice.date || null,
-          client_name: data.invoice.client || null,
-          payment_method: data.invoice.paymentMethod || null,
-          terms: data.invoice.terms || null,
-          notes: data.invoice.notes || null,
-          warranty_disclaimer: data.warrantyDisclaimer || null,
-          tax_rate: Number(data.invoice.taxRate || 0),
-          discount_rate: Number(data.invoice.discountRate || 0),
-          subtotal: calc.sub,
-          tax_amount: calc.tax,
-          discount_amount: calc.disc,
-          total: calc.total,
-        })
-        .select()
-        .single();
+      const payload = {
+        user_id: user.id,
+        invoice_number: data.invoice.number || null,
+        invoice_date: data.invoice.date || null,
+        client_name: data.invoice.client || null,
+        payment_method: data.invoice.paymentMethod || null,
+        terms: data.invoice.terms || null,
+        notes: data.invoice.notes || null,
+        warranty_disclaimer: data.warrantyDisclaimer || null,
+        tax_rate: Number(data.invoice.taxRate || 0),
+        discount_rate: Number(data.invoice.discountRate || 0),
+        subtotal: calc.sub,
+        tax_amount: calc.tax,
+        discount_amount: calc.disc,
+        total: calc.total,
+        ticket_id: linkedTicketId,
+        property_id: linkedPropertyId,
+      };
 
-      if (invErr) { console.error('Save invoice failed:', invErr); return; }
+      const isUpdate = !!loadedInvoiceId;
+      let invoiceId = loadedInvoiceId;
+
+      if (isUpdate) {
+        // Update the existing invoice in place (edits to an already-saved invoice).
+        const { error: updErr } = await supabase.from('invoices').update(payload).eq('id', loadedInvoiceId);
+        if (updErr) { console.error('Update invoice failed:', updErr); showToast('Could not update invoice: ' + updErr.message); return; }
+        // Replace its line items.
+        await supabase.from('invoice_items').delete().eq('invoice_id', loadedInvoiceId);
+      } else {
+        const { data: inserted, error: invErr } = await supabase
+          .from('invoices').insert(payload).select().single();
+        if (invErr) { console.error('Save invoice failed:', invErr); showToast('Could not save invoice: ' + invErr.message); return; }
+        invoiceId = inserted.id;
+      }
 
       const items = data.items
         .filter(it => it.description && it.description.trim())
         .map((it, idx) => ({
-          invoice_id: inserted.id,
+          invoice_id: invoiceId,
           description: it.description,
           qty: Number(it.qty || 0),
           unit_price: Number(it.price || 0),
@@ -114,7 +222,15 @@
         if (itemsErr) console.error('Save invoice items failed:', itemsErr);
       }
 
+      // Remember this invoice so further saves update it instead of duplicating.
+      loadedInvoiceId = invoiceId;
+
+      showToast(isUpdate
+        ? `Invoice ${data.invoice.number || ''} updated ✓`
+        : `Invoice ${data.invoice.number || ''} saved to history ✓`);
+
       loadHistory();
+      loadKPIs();
     } catch (err) {
       console.error('Unexpected error saving invoice history:', err);
     }
@@ -156,11 +272,25 @@
     }
     historyEmpty.style.display = 'none';
 
+    // Which invoice IDs are consolidated parents (referenced by others)
+    const consolidatedParentIds = new Set((rows || []).map(r => r.consolidated_into).filter(Boolean));
+
     filtered.forEach(inv => {
       const tr = document.createElement('tr');
       const status = inv.payment_status || 'pending';
+      const isConsolidated = status === 'consolidated';
+      const isParent = consolidatedParentIds.has(inv.id);
+      const canSelect = !isConsolidated && !isParent;
+      tr.dataset.id = inv.id;
+      tr.dataset.total = inv.total || 0;
+      tr.dataset.client = inv.client_name || '';
       tr.innerHTML = `
-        <td>${escHtml(inv.invoice_number || '—')}</td>
+        <td class="col-check">
+          ${canSelect
+            ? `<input type="checkbox" class="row-check" data-id="${inv.id}" data-total="${Number(inv.total||0)}" data-client="${escHtml(inv.client_name||'')}" data-number="${escHtml(inv.invoice_number||'')}" data-date="${escHtml(inv.invoice_date||'')}" data-method="${escHtml(inv.payment_method||'')}"/>`
+            : ''}
+        </td>
+        <td>${escHtml(inv.invoice_number || '—')}${isConsolidated ? '<span class="consolidated-tag">consolidated</span>' : ''}${isParent ? '<span class="consolidated-tag" style="background:#fff7e6;color:#d46b08;border:1px solid #ffd591;">consolidated invoice</span>' : ''}</td>
         <td>${escHtml(inv.invoice_date || '—')}</td>
         <td>${escHtml(inv.client_name || '—')}</td>
         <td class="col-num">${currency.format(Number(inv.total || 0))}</td>
@@ -170,6 +300,7 @@
             <option value="pending" ${status === 'pending' ? 'selected' : ''}>Pending</option>
             <option value="paid" ${status === 'paid' ? 'selected' : ''}>Paid</option>
             <option value="overdue" ${status === 'overdue' ? 'selected' : ''}>Overdue</option>
+            <option value="consolidated" ${status === 'consolidated' ? 'selected' : ''}>Consolidated</option>
           </select>
         </td>
         <td class="col-action">
@@ -179,6 +310,7 @@
             <button class="btn btn-sm btn-link" data-id="${inv.id}">Copy Link</button>
             <button class="btn btn-sm btn-paylink" data-id="${inv.id}" data-current="${escHtml(inv.payment_link || '')}">${inv.payment_link ? 'Edit Pay Link' : 'Add Pay Link'}</button>
             <button class="btn btn-sm btn-danger btn-delete" data-id="${inv.id}">Delete</button>
+            ${isParent ? `<button class="btn btn-sm btn-unconsolidate" data-id="${inv.id}" data-number="${escHtml(inv.invoice_number||'')}" title="Release all original invoices back to pending">Unconsolidate</button>` : ''}
           </div>
         </td>
       `;
@@ -200,6 +332,423 @@
     historyBody.querySelectorAll('.btn-paylink').forEach(btn => {
       btn.addEventListener('click', () => setPaymentLink(btn.dataset.id, btn.dataset.current));
     });
+
+    historyBody.querySelectorAll('.btn-unconsolidate').forEach(btn => {
+      btn.addEventListener('click', () => unconsolidateInvoice(btn.dataset.id, btn.dataset.number));
+    });
+
+    wireCheckboxes();
+  }
+
+  async function unconsolidateInvoice(id, number) {
+    const label = number ? `#${number}` : 'this consolidated invoice';
+    if (!window.confirm(`Unconsolidate ${label}?\n\nThis will release all original invoices back to "pending" and delete the consolidated invoice. This cannot be undone.`)) return;
+
+    try {
+      // Release originals: clear consolidated_into, set back to pending
+      const { error: releaseErr } = await supabase
+        .from('invoices')
+        .update({ consolidated_into: null, payment_status: 'pending' })
+        .eq('consolidated_into', id);
+
+      if (releaseErr) throw releaseErr;
+
+      // Delete the consolidated invoice itself
+      const { error: deleteErr } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', id);
+
+      if (deleteErr) throw deleteErr;
+
+      showToast(`Invoices released back to pending ✓`);
+      loadHistory();
+      loadKPIs();
+    } catch (err) {
+      console.error('Unconsolidate failed:', err);
+      showToast('Error: ' + (err?.message || 'Could not unconsolidate.'));
+    }
+  }
+
+  /* ── KPI / Analytics panel ───────────────────────── */
+  const STATUS_COLORS = { paid: '#2f9e44', pending: '#c9622a', overdue: '#c0392b' };
+
+  function monthKey(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  async function loadKPIs() {
+    const panel = $('.kpi-panel');
+    if (!panel) return;
+
+    const { data: rows, error } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, total, payment_status, invoice_date, client_name')
+      .order('invoice_date', { ascending: false })
+      .limit(1000);
+
+    if (error) {
+      console.error('Load KPIs failed:', error);
+      return;
+    }
+
+    const invoices = rows || [];
+    const now = new Date();
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+    let outstandingTotal = 0, outstandingCount = 0;
+    let paidMonthTotal = 0, paidMonthCount = 0;
+    let invoicedMonthTotal = 0, invoicedLastMonthTotal = 0;
+    let overdueTotal = 0, overdueCount = 0;
+    const statusCounts = { paid: 0, pending: 0, overdue: 0 };
+    const clientTotals = new Map();
+    const monthTotals = new Map();
+
+    invoices.forEach(inv => {
+      const total = Number(inv.total || 0);
+      const status = inv.payment_status || 'pending';
+      const mKey = monthKey(inv.invoice_date);
+
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+
+      if (status === 'pending') {
+        outstandingTotal += total;
+        outstandingCount += 1;
+      }
+      if (status === 'overdue') {
+        overdueTotal += total;
+        overdueCount += 1;
+      }
+      if (status === 'paid' && mKey === thisMonthKey) {
+        paidMonthTotal += total;
+        paidMonthCount += 1;
+      }
+      if (status !== 'consolidated') {
+        if (mKey === thisMonthKey) invoicedMonthTotal += total;
+        if (mKey === lastMonthKey) invoicedLastMonthTotal += total;
+        if (mKey) monthTotals.set(mKey, (monthTotals.get(mKey) || 0) + total);
+      }
+
+      const clientName = (inv.client_name || 'Unknown').trim() || 'Unknown';
+      clientTotals.set(clientName, (clientTotals.get(clientName) || 0) + total);
+    });
+
+    // Summary cards
+    $('#kpi-outstanding').textContent = currency.format(outstandingTotal);
+    $('#kpi-outstanding-count').textContent = `${outstandingCount} invoice${outstandingCount === 1 ? '' : 's'}`;
+    $('#kpi-paid-month').textContent = currency.format(paidMonthTotal);
+    $('#kpi-paid-month-count').textContent = `${paidMonthCount} invoice${paidMonthCount === 1 ? '' : 's'}`;
+    $('#kpi-invoiced-month').textContent = currency.format(invoicedMonthTotal);
+    $('#kpi-overdue').textContent = currency.format(overdueTotal);
+    $('#kpi-overdue-count').textContent = `${overdueCount} invoice${overdueCount === 1 ? '' : 's'}`;
+
+    const deltaEl = $('#kpi-invoiced-month-delta');
+    if (invoicedLastMonthTotal > 0) {
+      const pct = ((invoicedMonthTotal - invoicedLastMonthTotal) / invoicedLastMonthTotal) * 100;
+      const sign = pct >= 0 ? '+' : '';
+      deltaEl.textContent = `${sign}${pct.toFixed(0)}% vs last month`;
+      deltaEl.style.color = pct >= 0 ? '#2f9e44' : '#c9622a';
+    } else {
+      deltaEl.textContent = 'vs last month';
+      deltaEl.style.color = '';
+    }
+
+    // Last 6 months bar chart
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: d.toLocaleDateString('en-US', { month: 'short' }),
+        total: monthTotals.get(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`) || 0,
+      });
+    }
+    const revenueTotal = months.reduce((sum, m) => sum + m.total, 0);
+    $('#kpi-revenue-total').textContent = currency.format(revenueTotal);
+    renderBarChart(months);
+
+    // Status donut
+    renderDonutChart(statusCounts);
+
+    // Top clients
+    renderTopClients(clientTotals);
+
+    // Recent activity
+    renderRecentActivity(invoices);
+  }
+
+  function renderRecentActivity(invoices) {
+    const el = $('#kpi-recent-activity');
+    if (!el) return;
+
+    const recent = [...invoices]
+      .sort((a, b) => (b.invoice_date || '').localeCompare(a.invoice_date || ''))
+      .slice(0, 6);
+
+    if (recent.length === 0) {
+      el.innerHTML = `<div class="kpi-empty">No invoices yet.</div>`;
+      return;
+    }
+
+    el.innerHTML = recent.map(inv => {
+      const status = inv.payment_status || 'pending';
+      const dateLabel = inv.invoice_date
+        ? new Date(inv.invoice_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '—';
+      return `
+        <div class="kpi-activity-row">
+          <div class="kpi-activity-main">
+            <div class="kpi-activity-client">${escHtml(inv.client_name || 'Unknown')}</div>
+            <div class="kpi-activity-meta">${escHtml(inv.invoice_number ? '#' + inv.invoice_number : '')} · ${dateLabel}</div>
+          </div>
+          <span class="kpi-activity-badge status-${status}">${escHtml(status)}</span>
+          <span class="kpi-activity-total">${currency.format(Number(inv.total || 0))}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /* ── Consolidation logic ─────────────────────────── */
+  let selectedInvoices = new Map(); // id → { total, client, number, date, method }
+
+  const consolidateBar      = $('#consolidate-bar');
+  const consolidateCount    = $('#consolidate-count');
+  const consolidateSum      = $('#consolidate-sum');
+  const consolidateBackdrop = $('#consolidate-modal-backdrop');
+
+  function updateConsolidateBar() {
+    const count = selectedInvoices.size;
+    if (count < 2) {
+      consolidateBar.style.display = 'none';
+      return;
+    }
+    const total = [...selectedInvoices.values()].reduce((s, inv) => s + Number(inv.total), 0);
+    consolidateCount.textContent = count;
+    consolidateSum.textContent = currency.format(total);
+    consolidateBar.style.display = 'flex';
+  }
+
+  function wireCheckboxes() {
+    const checkAll = $('#check-all');
+    if (checkAll) {
+      checkAll.checked = false;
+      checkAll.addEventListener('change', () => {
+        document.querySelectorAll('.row-check').forEach(cb => {
+          cb.checked = checkAll.checked;
+          const d = cb.dataset;
+          if (checkAll.checked) {
+            selectedInvoices.set(d.id, { total: d.total, client: d.client, number: d.number, date: d.date, method: d.method });
+          } else {
+            selectedInvoices.delete(d.id);
+          }
+        });
+        updateConsolidateBar();
+      });
+    }
+
+    document.querySelectorAll('.row-check').forEach(cb => {
+      // restore checked state if already selected
+      if (selectedInvoices.has(cb.dataset.id)) cb.checked = true;
+
+      cb.addEventListener('change', () => {
+        const d = cb.dataset;
+        if (cb.checked) {
+          selectedInvoices.set(d.id, { total: d.total, client: d.client, number: d.number, date: d.date, method: d.method });
+        } else {
+          selectedInvoices.delete(d.id);
+        }
+        updateConsolidateBar();
+      });
+    });
+  }
+
+  $('#btn-consolidate-cancel').addEventListener('click', () => {
+    selectedInvoices.clear();
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = false);
+    const checkAll = $('#check-all');
+    if (checkAll) checkAll.checked = false;
+    updateConsolidateBar();
+  });
+
+  $('#btn-consolidate-open').addEventListener('click', () => {
+    const entries = [...selectedInvoices.entries()];
+    const total   = entries.reduce((s, [, inv]) => s + Number(inv.total), 0);
+    const clients = [...new Set(entries.map(([, inv]) => inv.client).filter(Boolean))];
+
+    // Populate modal
+    $('#consolidate-modal-sub').textContent =
+      `Combining ${entries.length} invoice${entries.length > 1 ? 's' : ''} — ${clients.join(', ')}`;
+    $('#consolidate-modal-total').textContent = currency.format(total);
+    $('#consolidate-client-name').value = clients.length === 1 ? clients[0] : clients.join(' / ');
+    $('#consolidate-payment-method').value = entries[0]?.[1]?.method || 'Cash';
+
+    $('#consolidate-breakdown').innerHTML = entries.map(([id, inv]) => `
+      <div class="consolidate-breakdown-row">
+        <span class="consolidate-breakdown-num">#${escHtml(inv.number || '—')}</span>
+        <span class="consolidate-breakdown-client">${escHtml(inv.client || '—')} · ${escHtml(inv.date || '—')}</span>
+        <span class="consolidate-breakdown-amount">${currency.format(Number(inv.total))}</span>
+      </div>
+    `).join('');
+
+    consolidateBackdrop.style.display = 'flex';
+  });
+
+  $('#btn-consolidate-dismiss').addEventListener('click', () => {
+    consolidateBackdrop.style.display = 'none';
+  });
+  consolidateBackdrop.addEventListener('click', (e) => {
+    if (e.target === consolidateBackdrop) consolidateBackdrop.style.display = 'none';
+  });
+
+  $('#btn-consolidate-confirm').addEventListener('click', async () => {
+    const entries   = [...selectedInvoices.entries()];
+    const ids       = entries.map(([id]) => id);
+    const total     = entries.reduce((s, [, inv]) => s + Number(inv.total), 0);
+    const clientName = $('#consolidate-client-name').value.trim();
+    const payMethod  = $('#consolidate-payment-method').value;
+    const numbers    = entries.map(([, inv]) => inv.number).filter(Boolean).join(', ');
+
+    if (!clientName) {
+      showToast('Enter a client name for the consolidated invoice.');
+      return;
+    }
+
+    const btn = $('#btn-consolidate-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id || null;
+
+      const { data: inserted, error: insErr } = await supabase
+        .from('invoices')
+        .insert({
+          user_id: userId,
+          client_name: clientName,
+          invoice_date: new Date().toISOString().split('T')[0],
+          payment_method: payMethod,
+          terms: 'Paid in full',
+          notes: `Consolidated payment covering invoices: ${numbers}`,
+          subtotal: total,
+          tax_rate: 0,
+          discount_rate: 0,
+          tax_amount: 0,
+          discount_amount: 0,
+          total: total,
+          payment_status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (insErr) throw insErr;
+
+      // Mark originals as consolidated and link to new invoice
+      const { error: updErr } = await supabase
+        .from('invoices')
+        .update({ payment_status: 'consolidated', consolidated_into: inserted.id })
+        .in('id', ids);
+
+      if (updErr) throw updErr;
+
+      consolidateBackdrop.style.display = 'none';
+      selectedInvoices.clear();
+      updateConsolidateBar();
+      showToast(`Consolidated invoice created — total ${currency.format(total)} ✓`);
+      loadHistory();
+      loadKPIs();
+    } catch (err) {
+      console.error('Consolidation failed:', err);
+      showToast('Error: ' + (err?.message || JSON.stringify(err)));
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Create Consolidated Invoice';
+    }
+  });
+
+  function renderBarChart(months) {
+    const svg = $('#kpi-bar-chart');
+    const labelsEl = $('#kpi-bar-labels');
+    if (!svg) return;
+
+    const max = Math.max(...months.map(m => m.total), 1);
+    const width = 280, height = 140, gap = 10;
+    const barWidth = (width - gap * (months.length - 1)) / months.length;
+
+    let svgContent = '';
+    months.forEach((m, i) => {
+      const barHeight = Math.max((m.total / max) * 110, m.total > 0 ? 4 : 0);
+      const x = i * (barWidth + gap);
+      const y = 124 - barHeight;
+      svgContent += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4" fill="var(--purple-mid)" opacity="${i === months.length - 1 ? '1' : '0.55'}"/>`;
+    });
+    svgContent += `<line x1="0" y1="124" x2="${width}" y2="124" stroke="var(--border)" stroke-width="1"/>`;
+    svg.innerHTML = svgContent;
+
+    labelsEl.innerHTML = months.map(m => `<span>${m.label}</span>`).join('');
+  }
+
+  function renderDonutChart(statusCounts) {
+    const svg = $('#kpi-donut-chart');
+    const legendEl = $('#kpi-legend');
+    if (!svg) return;
+
+    const entries = Object.entries(statusCounts).filter(([, count]) => count > 0);
+    const total = entries.reduce((sum, [, count]) => sum + count, 0);
+
+    if (total === 0) {
+      svg.innerHTML = `<circle cx="60" cy="60" r="48" fill="none" stroke="var(--border)" stroke-width="14"/>`;
+      legendEl.innerHTML = `<div class="kpi-empty">No invoices yet.</div>`;
+      return;
+    }
+
+    const r = 48, cx = 60, cy = 60;
+    const circumference = 2 * Math.PI * r;
+    let offset = 0;
+    let segments = '';
+
+    entries.forEach(([status, count]) => {
+      const fraction = count / total;
+      const dash = fraction * circumference;
+      const color = STATUS_COLORS[status] || 'var(--purple-mid)';
+      segments += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="14" stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      offset += dash;
+    });
+
+    svg.innerHTML = segments + `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="20" font-family="DM Serif Display, serif" fill="var(--purple)">${total}</text>`;
+
+    legendEl.innerHTML = entries.map(([status, count]) => `
+      <div class="kpi-legend-item">
+        <span class="kpi-legend-dot" style="background:${STATUS_COLORS[status] || 'var(--purple-mid)'}"></span>
+        <span class="kpi-legend-label">${escHtml(status)}</span>
+        <span class="kpi-legend-value">${count}</span>
+      </div>
+    `).join('');
+  }
+
+  function renderTopClients(clientTotals) {
+    const el = $('#kpi-top-clients');
+    if (!el) return;
+
+    const sorted = [...clientTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (sorted.length === 0) {
+      el.innerHTML = `<div class="kpi-empty">No invoices yet.</div>`;
+      return;
+    }
+
+    const max = Math.max(...sorted.map(([, total]) => total), 1);
+    el.innerHTML = sorted.map(([name, total]) => `
+      <div class="kpi-toplist-row">
+        <span class="kpi-toplist-name">${escHtml(name)}</span>
+        <span class="kpi-toplist-bar-track"><span class="kpi-toplist-bar-fill" style="width:${(total / max) * 100}%"></span></span>
+        <span class="kpi-toplist-value">${currency.format(total)}</span>
+      </div>
+    `).join('');
   }
 
   async function setPaymentLink(id, current) {
@@ -248,6 +797,7 @@
       selectEl.classList.add('status-' + status);
     }
     showToast('Status updated ✓');
+    loadKPIs();
   }
 
   async function deleteInvoiceFromHistory(id) {
@@ -260,6 +810,7 @@
     }
     showToast('Invoice deleted from history.');
     loadHistory();
+    loadKPIs();
   }
 
   async function loadInvoiceFromHistory(id, mode) {
@@ -277,6 +828,8 @@
     if (itemsErr) console.error('Load invoice items failed:', itemsErr);
 
     const isDuplicate = mode === 'duplicate';
+    // A duplicate becomes a brand-new invoice; loading/viewing keeps its identity
+    loadedInvoiceId = isDuplicate ? null : inv.id;
     const payload = {
       invoice: {
         number:        isDuplicate ? '' : (inv.invoice_number || ''),
@@ -305,6 +858,7 @@
     if (invoiceTab) invoiceTab.classList.add('active');
     $('#section-invoice').classList.add('active');
     $('#page-title').textContent = 'Invoice';
+    document.body.dataset.view = 'invoice';
 
     showToast(isDuplicate ? 'Invoice duplicated — review and generate ✓' : 'Invoice loaded — review and regenerate ✓');
   }
@@ -340,6 +894,7 @@
       btn.classList.add('active');
       const key = btn.dataset.section;
       $('#section-' + key).classList.add('active');
+      document.body.dataset.view = key;
       $('#page-title').textContent = key === 'invoice' ? 'Invoice' : key === 'estimate' ? 'Ball Park Estimate' : 'Invoice History';
       if (key === 'history') loadHistory();
       closeMobileSidebar();
@@ -529,7 +1084,7 @@
         name: 'Rose Legacy Home Solutions LLC',
         address: 'Overland Park, KS',
         phone: '816 298 4828',
-        email: 'appointments@roselegacyhvac.com',
+        email: 'roselegacyhs@icloud.com',
       },
       invoice: {
         number:        $('#inv-number').value || '',
@@ -616,7 +1171,7 @@
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text('HVAC Services | Overland Park, KS', tx, y + 14);
-    doc.text('Phone: 816 298 4828 | Email: appointments@roselegacyhvac.com', tx, y + 26);
+    doc.text('Phone: 816 298 4828 | Email: roselegacyhs@icloud.com', tx, y + 26);
     // Small gap below the logo/contact block so the accent line sits close to
     // the header without overlapping the logo or text.
     return y + 46;
@@ -780,13 +1335,38 @@
         doc.setTextColor(0, 0, 0);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        doc.text('Questions about this invoice? Call 816 298 4828 or email appointments@roselegacyhvac.com', left, footerY + 32);
+        doc.text('Questions about this invoice? Call 816 298 4828 or email roselegacyhs@icloud.com', left, footerY + 32);
       }
 
       doc.save(`invoice-${data.invoice.number || dateStr}.pdf`);
       showToast('Invoice PDF downloaded ✓');
-      saveInvoiceToHistory(data, calc);
     });
+  });
+
+  /* ── Save to cloud (history) — separate from PDF download ─ */
+  $('#btn-save-cloud').addEventListener('click', async () => {
+    const data = collectData();
+    const calc = computeTotals();
+    await saveInvoiceToHistory(data, calc);
+  });
+
+  /* ── New invoice — clears the form for a fresh, unsaved invoice ─ */
+  $('#btn-new-invoice').addEventListener('click', async () => {
+    loadedInvoiceId = null;
+    linkedTicketId = null;
+    linkedPropertyId = null;
+    $('#client-name').value = '';
+    $('#terms').value = '';
+    notesEl.value = '';
+    taxRateEl.value = 0;
+    discountEl.value = 0;
+    $('#payment-method').value = 'Cash';
+    $('#inv-date').value = new Date().toISOString().slice(0, 10);
+    itemsBody.innerHTML = '';
+    addRow();
+    computeTotals();
+    $('#inv-number').value = await fetchNextInvoiceNumber();
+    showToast('New invoice — number ' + $('#inv-number').value);
   });
 
   /* ── Download Estimate PDF ───────────────────────── */

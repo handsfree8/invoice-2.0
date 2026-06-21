@@ -12,7 +12,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body>
+<body data-view="invoice">
 
   <!-- Login Overlay -->
   <div id="login-overlay" class="login-overlay">
@@ -74,10 +74,13 @@
       </div>
       <div class="contact-item">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        appointments@roselegacyhvac.com
+        roselegacyhs@icloud.com
       </div>
     </div>
   </nav>
+
+  <!-- Page Body: main content + KPI panel -->
+  <div class="page-body">
 
   <!-- Main Content -->
   <main class="main">
@@ -95,7 +98,15 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
           Save JSON
         </button>
-        <button id="btn-generate" class="btn btn-primary">
+        <button id="btn-new-invoice" class="btn btn-ghost">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New
+        </button>
+        <button id="btn-save-cloud" class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save
+        </button>
+        <button id="btn-generate" class="btn btn-ghost">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download Invoice PDF
         </button>
@@ -315,6 +326,7 @@
               <option value="pending">Pending</option>
               <option value="paid">Paid</option>
               <option value="overdue">Overdue</option>
+              <option value="consolidated">Consolidated</option>
             </select>
           </label>
         </div>
@@ -322,6 +334,7 @@
           <table id="history-table">
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="check-all" title="Select all"/></th>
                 <th>Invoice #</th>
                 <th>Date</th>
                 <th>Client</th>
@@ -338,12 +351,128 @@
       </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-      © <span id="year"></span> Rose Legacy Home Solutions LLC · Overland Park, KS
-    </footer>
-
   </main>
+
+  <!-- KPI / Analytics Sidebar -->
+  <aside class="kpi-panel">
+    <div class="kpi-panel-inner">
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <span class="kpi-label">Outstanding</span>
+          <span class="kpi-value" id="kpi-outstanding">$0.00</span>
+          <span class="kpi-sub" id="kpi-outstanding-count">0 invoices</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Paid (this month)</span>
+          <span class="kpi-value kpi-positive" id="kpi-paid-month">$0.00</span>
+          <span class="kpi-sub" id="kpi-paid-month-count">0 invoices</span>
+        </div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <span class="kpi-label">Invoiced (this month)</span>
+          <span class="kpi-value" id="kpi-invoiced-month">$0.00</span>
+          <span class="kpi-sub" id="kpi-invoiced-month-delta">vs last month</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Overdue</span>
+          <span class="kpi-value kpi-warning" id="kpi-overdue">$0.00</span>
+          <span class="kpi-sub" id="kpi-overdue-count">0 invoices</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Revenue — last 6 months</span>
+          <span class="kpi-total" id="kpi-revenue-total">$0.00</span>
+        </div>
+        <svg id="kpi-bar-chart" class="kpi-chart" viewBox="0 0 280 140" preserveAspectRatio="none"></svg>
+        <div class="kpi-bar-labels" id="kpi-bar-labels"></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Status breakdown</span>
+        </div>
+        <div class="kpi-donut-wrap">
+          <svg id="kpi-donut-chart" class="kpi-donut" viewBox="0 0 120 120"></svg>
+          <div class="kpi-legend" id="kpi-legend"></div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Top Clients</span>
+        </div>
+        <div class="kpi-toplist" id="kpi-top-clients"></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Recent Activity</span>
+        </div>
+        <div class="kpi-activity" id="kpi-recent-activity"></div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- Footer -->
+  <footer class="footer">
+    © <span id="year"></span> Rose Legacy Home Solutions LLC · Overland Park, KS
+  </footer>
+
+  </div><!-- /.page-body -->
+
+  <!-- Consolidate floating bar -->
+  <div id="consolidate-bar" class="consolidate-bar" style="display:none;">
+    <div class="consolidate-bar-info">
+      <span id="consolidate-count">0</span> invoices selected
+    </div>
+    <div class="consolidate-bar-total" id="consolidate-sum">$0.00</div>
+    <button class="consolidate-bar-btn" id="btn-consolidate-open">Consolidate →</button>
+    <button class="consolidate-bar-cancel" id="btn-consolidate-cancel" title="Clear selection">✕</button>
+  </div>
+
+  <!-- Consolidate modal -->
+  <div id="consolidate-modal-backdrop" class="consolidate-modal-backdrop" style="display:none;">
+    <div class="consolidate-modal">
+      <h2>Consolidated Invoice</h2>
+      <p class="consolidate-modal-sub" id="consolidate-modal-sub">Combining selected invoices into one payment</p>
+      <div class="consolidate-breakdown" id="consolidate-breakdown"></div>
+      <div class="consolidate-total-row">
+        <span class="consolidate-total-label">Total Due</span>
+        <span class="consolidate-total-amount" id="consolidate-modal-total">$0.00</span>
+      </div>
+      <div class="consolidate-client-field">
+        <label class="field">
+          <span class="field-label">Client Name (on new invoice)</span>
+          <input id="consolidate-client-name" type="text" class="field-input" placeholder="Client name"/>
+        </label>
+      </div>
+      <div class="consolidate-client-field">
+        <label class="field">
+          <span class="field-label">Payment Method</span>
+          <select id="consolidate-payment-method" class="field-input">
+            <option>Cash</option>
+            <option>Card</option>
+            <option>Check</option>
+            <option>Zelle</option>
+            <option>Other</option>
+          </select>
+        </label>
+      </div>
+      <div class="consolidate-actions">
+        <button class="btn btn-ghost" id="btn-consolidate-dismiss">Cancel</button>
+        <button class="btn btn-primary" id="btn-consolidate-confirm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Create Consolidated Invoice
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast -->
   <div id="toast" class="toast"></div>
