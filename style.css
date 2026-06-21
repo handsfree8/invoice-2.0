@@ -509,7 +509,7 @@ td.line-total {
 }
 .kpi-panel-inner {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   align-content: start;
   position: sticky;
@@ -733,7 +733,7 @@ td.line-total {
   }
   .kpi-panel-inner {
     position: static;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   /* Wide charts no longer need to span at full width */
   .kpi-card.kpi-span {
@@ -744,7 +744,7 @@ td.line-total {
 
 @media (max-width: 900px) {
   .kpi-panel-inner {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -814,7 +814,7 @@ td.line-total {
   .main { padding: 16px 16px 28px; }
   .kpi-panel { padding: 0 16px 8px; }
   .footer { margin: 32px 16px 0; }
-  .kpi-panel-inner { grid-template-columns: 1fr 1fr; }
+  .kpi-panel-inner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .section-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .field-full { grid-column: 1; }
@@ -832,7 +832,7 @@ td.line-total {
   .card-header h2 { font-size: 15px; }
   .field-input { font-size: 14px; padding: 8px 10px; }
   .mobile-topbar .mobile-title { font-size: 15px; }
-  .kpi-panel-inner { grid-template-columns: 1fr 1fr; }
+  .kpi-panel-inner { grid-template-columns: 1fr; }
   .kpi-value { font-size: 22px; }
   table { min-width: 480px; }
   .consolidate-bar { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
