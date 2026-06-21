@@ -497,13 +497,13 @@
       return;
     }
 
-    el.innerHTML = recent.map(inv => {
+    el.innerHTML = recent.map((inv, i) => {
       const status = inv.payment_status || 'pending';
       const dateLabel = inv.invoice_date
         ? new Date(inv.invoice_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         : '—';
       return `
-        <div class="kpi-activity-row">
+        <div class="kpi-activity-row" style="animation-delay:${(i * 0.06).toFixed(2)}s">
           <div class="kpi-activity-main">
             <div class="kpi-activity-client">${escHtml(inv.client_name || 'Unknown')}</div>
             <div class="kpi-activity-meta">${escHtml(inv.invoice_number ? '#' + inv.invoice_number : '')} · ${dateLabel}</div>
@@ -687,7 +687,7 @@
       const barHeight = Math.max((m.total / max) * 110, m.total > 0 ? 4 : 0);
       const x = i * (barWidth + gap);
       const y = 124 - barHeight;
-      svgContent += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4" fill="var(--purple-mid)" opacity="${i === months.length - 1 ? '1' : '0.55'}"/>`;
+      svgContent += `<rect class="kpi-bar" style="animation-delay:${(i * 0.07).toFixed(2)}s" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4" fill="var(--purple-mid)" opacity="${i === months.length - 1 ? '1' : '0.55'}"/>`;
     });
     svgContent += `<line x1="0" y1="124" x2="${width}" y2="124" stroke="var(--border)" stroke-width="1"/>`;
     svg.innerHTML = svgContent;
@@ -714,18 +714,18 @@
     let offset = 0;
     let segments = '';
 
-    entries.forEach(([status, count]) => {
+    entries.forEach(([status, count], i) => {
       const fraction = count / total;
       const dash = fraction * circumference;
       const color = STATUS_COLORS[status] || 'var(--purple-mid)';
-      segments += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="14" stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      segments += `<circle class="kpi-seg" style="--kpi-circ:${circumference}; animation-delay:${(i * 0.12).toFixed(2)}s" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="14" stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
       offset += dash;
     });
 
     svg.innerHTML = segments + `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="20" font-family="DM Serif Display, serif" fill="var(--purple)">${total}</text>`;
 
-    legendEl.innerHTML = entries.map(([status, count]) => `
-      <div class="kpi-legend-item">
+    legendEl.innerHTML = entries.map(([status, count], i) => `
+      <div class="kpi-legend-item" style="animation-delay:${(0.3 + i * 0.1).toFixed(2)}s">
         <span class="kpi-legend-dot" style="background:${STATUS_COLORS[status] || 'var(--purple-mid)'}"></span>
         <span class="kpi-legend-label">${escHtml(status)}</span>
         <span class="kpi-legend-value">${count} · ${Math.round((count / total) * 100)}%</span>
@@ -744,10 +744,10 @@
     }
 
     const max = Math.max(...sorted.map(([, total]) => total), 1);
-    el.innerHTML = sorted.map(([name, total]) => `
-      <div class="kpi-toplist-row">
+    el.innerHTML = sorted.map(([name, total], i) => `
+      <div class="kpi-toplist-row" style="animation-delay:${(i * 0.08).toFixed(2)}s">
         <span class="kpi-toplist-name">${escHtml(name)}</span>
-        <span class="kpi-toplist-bar-track"><span class="kpi-toplist-bar-fill" style="width:${(total / max) * 100}%"></span></span>
+        <span class="kpi-toplist-bar-track"><span class="kpi-toplist-bar-fill" style="width:${(total / max) * 100}%; animation-delay:${(0.1 + i * 0.08).toFixed(2)}s"></span></span>
         <span class="kpi-toplist-value">${currency.format(total)}</span>
       </div>
     `).join('');
