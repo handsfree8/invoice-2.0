@@ -502,22 +502,26 @@ td.line-total {
 
 /* ── KPI Panel ───────────────────────────────────── */
 .kpi-panel {
-  width: 340px;
-  flex-shrink: 0;
+  flex: 1 1 560px;
+  min-width: 560px;
+  max-width: 820px;
   padding: 28px 24px 48px 0;
-  min-width: 0;
 }
 .kpi-panel-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  position: sticky;
-  top: 28px;
-}
-.kpi-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  align-content: start;
+  position: sticky;
+  top: 28px;
+}
+/* Summary rows unwrap so their cards become cells of the panel grid */
+.kpi-row {
+  display: contents;
+}
+/* Charts that read better full-width span both columns */
+.kpi-card.kpi-span {
+  grid-column: 1 / -1;
 }
 .kpi-card {
   background: var(--card);
@@ -718,6 +722,8 @@ td.line-total {
   /* KPI analytics only make sense on the History view at this size */
   .kpi-panel {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     padding: 0 28px 8px;
     order: -1;            /* show above the history content */
     display: none;
@@ -727,15 +733,17 @@ td.line-total {
   }
   .kpi-panel-inner {
     position: static;
-  }
-  .kpi-row {
     grid-template-columns: repeat(4, 1fr);
+  }
+  /* Wide charts no longer need to span at full width */
+  .kpi-card.kpi-span {
+    grid-column: auto;
   }
   .footer { margin: 40px 28px 0; }
 }
 
 @media (max-width: 900px) {
-  .kpi-row {
+  .kpi-panel-inner {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -806,7 +814,7 @@ td.line-total {
   .main { padding: 16px 16px 28px; }
   .kpi-panel { padding: 0 16px 8px; }
   .footer { margin: 32px 16px 0; }
-  .kpi-row { grid-template-columns: 1fr 1fr; }
+  .kpi-panel-inner { grid-template-columns: 1fr 1fr; }
   .section-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .field-full { grid-column: 1; }
@@ -824,7 +832,7 @@ td.line-total {
   .card-header h2 { font-size: 15px; }
   .field-input { font-size: 14px; padding: 8px 10px; }
   .mobile-topbar .mobile-title { font-size: 15px; }
-  .kpi-row { grid-template-columns: 1fr 1fr; }
+  .kpi-panel-inner { grid-template-columns: 1fr 1fr; }
   .kpi-value { font-size: 22px; }
   table { min-width: 480px; }
   .consolidate-bar { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
