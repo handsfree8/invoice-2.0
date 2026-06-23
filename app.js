@@ -787,7 +787,6 @@
 
   async function updateInvoiceStatus(id, status, selectEl) {
     const patch = { payment_status: status };
-    patch.paid_at = status === 'paid' ? new Date().toISOString() : null;
     const { error } = await supabase.from('invoices').update(patch).eq('id', id);
     if (error) {
       showToast('Could not update status.');
