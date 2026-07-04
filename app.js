@@ -20,6 +20,7 @@
     loginOverlay.classList.add('hidden');
     prefillFromTicket();
     prefillFromInvoiceParam();
+    prefillFromProperty();
     prefillNextInvoiceNumber();
   }
 
@@ -155,6 +156,40 @@
       }
     } catch (err) {
       console.error('Could not load linked work order:', err);
+    }
+  }
+
+  /* ── Property link (?property=<uuid>&mode=estimate) ─ */
+  let propertyPrefilled = false;
+
+  async function prefillFromProperty() {
+    if (propertyPrefilled) return;
+    const params = new URLSearchParams(location.search);
+    const propertyId = params.get('property');
+    const mode = params.get('mode');
+    if (!propertyId) return;
+    propertyPrefilled = true;
+    try {
+      const { data: prop, error } = await supabase
+        .from('properties')
+        .select('id, name, address, city, state')
+        .eq('id', propertyId)
+        .single();
+      if (error) throw error;
+      linkedPropertyId = prop.id;
+      const clientEl = $('#client-name');
+      if (clientEl && !clientEl.value) {
+        clientEl.value = prop.name + (prop.address ? ' — ' + prop.address : '');
+      }
+      if (mode === 'estimate') {
+        const estimateTab = document.querySelector('[data-section="estimate"]');
+        if (estimateTab) estimateTab.click();
+      }
+      if (typeof showToast === 'function') {
+        showToast('Linked to property: ' + prop.name);
+      }
+    } catch (err) {
+      console.error('Could not load property:', err);
     }
   }
 
@@ -1023,7 +1058,39 @@
     return { sub };
   }
 
+  async function saveEstimateToSupabase() {
+    if (!linkedPropertyId) {
+      showToast('No property linked — open this page from a property card.');
+      return;
+    }
+    const rows = getEstimateRows().filter(r => r.description.trim());
+    if (rows.length === 0) {
+      showToast('Add at least one line item before saving.');
+      return;
+    }
+    const total = rows.reduce((sum, r) => sum + r.qty * r.price, 0);
+    const description = rows.map(r => `${r.description} (x${r.qty}) — $${(r.qty * r.price).toFixed(2)}`).join('\n');
+    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { error } = await supabase.from('estimates').insert({
+      property_id: linkedPropertyId,
+      ticket_id: null,
+      description,
+      amount: total,
+      status: 'pending',
+      expires_at: expiresAt,
+    });
+
+    if (error) {
+      showToast('Could not save estimate: ' + error.message);
+      console.error('Save estimate failed:', error);
+      return;
+    }
+    showToast('Estimate saved — expires in 3 days if not approved ✓');
+  }
+
   $('#btn-add-estimate').addEventListener('click', () => addEstimateRow());
+  $('#btn-save-estimate').addEventListener('click', saveEstimateToSupabase);
   if (estBody.children.length === 0) addEstimateRow();
 
   /* ── Warranty Disclaimer ─────────────────────────── */
