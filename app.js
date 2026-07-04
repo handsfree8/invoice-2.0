@@ -1169,6 +1169,7 @@
       items: getRows(),
       warrantyDisclaimer: localStorage.getItem('warrantyDisclaimer') || disclaimerEl.value.trim(),
       estimate: getEstimateRows(),
+      estimateNotes: ($('#estimate-notes')?.value || '').trim(),
     };
   }
 
@@ -1191,6 +1192,8 @@
       d.estimate.forEach(addEstimateRow);
       if (d.estimate.length === 0) addEstimateRow();
     }
+    const estimateNotesEl = $('#estimate-notes');
+    if (estimateNotesEl) estimateNotesEl.value = d.estimateNotes || '';
     localStorage.setItem('invoiceNotes', notesEl.value.trim());
     localStorage.setItem('warrantyDisclaimer', disclaimerEl.value.trim());
     showToast('Invoice loaded ✓');
