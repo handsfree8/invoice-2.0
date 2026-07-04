@@ -1071,6 +1071,7 @@
     const total = rows.reduce((sum, r) => sum + r.qty * r.price, 0);
     const description = rows.map(r => `${r.description} (x${r.qty}) — $${(r.qty * r.price).toFixed(2)}`).join('\n');
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    const notes = (document.getElementById('estimate-notes')?.value || '').trim() || null;
 
     const { error } = await supabase.from('estimates').insert({
       property_id: linkedPropertyId,
@@ -1079,6 +1080,7 @@
       amount: total,
       status: 'pending',
       expires_at: expiresAt,
+      notes,
     });
 
     if (error) {
