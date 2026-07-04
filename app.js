@@ -1494,6 +1494,19 @@
       doc.text(currency.format(subtotal), right, endY, { align: 'right' });
       doc.setTextColor(0, 0, 0);
 
+      const estimateNotes = ($('#estimate-notes')?.value || '').trim();
+      if (estimateNotes) {
+        endY += 28;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text('Notes:', left, endY);
+        endY += 14;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        const lines = doc.splitTextToSize(estimateNotes, right - left);
+        doc.text(lines, left, endY);
+      }
+
       const stamp = new Date().toISOString().slice(0, 10);
       doc.save(`estimate-${stamp}.pdf`);
       showToast('Estimate PDF downloaded ✓');
