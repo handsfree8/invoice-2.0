@@ -1052,3 +1052,130 @@ input.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(
 }
 .btn-unconsolidate { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
 .btn-unconsolidate:hover { background: #ffe7ba; }
+
+/* ── Monthly Profit Section ──────────────────────── */
+.kpi-profit-strip {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.kpi-profit-kpi {
+  background: var(--purple-light);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kpi-profit-kpi-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+.kpi-profit-kpi-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--purple);
+  line-height: 1.2;
+}
+.kpi-profit-chart-wrap {
+  position: relative;
+  overflow-x: auto;
+  margin-bottom: 4px;
+}
+.kpi-profit-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 2px 0 4px;
+}
+.kpi-profit-tooltip {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a2e;
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,.3);
+  line-height: 1.6;
+}
+.kpi-profit-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 2px 0 10px;
+}
+.kpi-profit-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.kpi-profit-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.kpi-profit-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.kpi-profit-toggle {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--purple);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.kpi-profit-table-wrap { overflow-x: auto; }
+.kpi-profit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.kpi-profit-table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 6px 8px;
+  border-bottom: 2px solid var(--border);
+}
+.kpi-profit-table td {
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.kpi-profit-table tr.profit-current td { background: rgba(47,158,68,0.05); }
+.kpi-profit-table td.profit-rev { font-weight: 700; color: #2f9e44; }
+.kpi-profit-table td.profit-rev.empty { color: var(--text-muted); font-weight: 400; }
+.kpi-profit-table td.profit-pending { color: #b0851f; }
+.kpi-profit-table td.profit-pending.empty { color: var(--text-muted); }
+.profit-current-badge {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 9px;
+  background: #2f9e44;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
