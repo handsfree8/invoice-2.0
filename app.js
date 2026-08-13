@@ -509,6 +509,55 @@
     $('#kpi-revenue-total').textContent = currency.format(revenueTotal);
     renderBarChart(months);
 
+    // 12-month profit section
+    const paidTotalsByMonth = new Map();
+    const pendingTotalsByMonth = new Map();
+    const paidCountByMonth = new Map();
+    invoices.forEach(inv => {
+      const total = Number(inv.total || 0);
+      const status = inv.payment_status || 'pending';
+      const mKey = monthKey(inv.invoice_date);
+      if (!mKey) return;
+      if (status === 'paid') {
+        paidTotalsByMonth.set(mKey, (paidTotalsByMonth.get(mKey) || 0) + total);
+        paidCountByMonth.set(mKey, (paidCountByMonth.get(mKey) || 0) + 1);
+      } else if (status === 'pending' || status === 'overdue') {
+        pendingTotalsByMonth.set(mKey, (pendingTotalsByMonth.get(mKey) || 0) + total);
+      }
+    });
+    const months12 = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      months12.push({
+        key,
+        label: d.toLocaleDateString('en-US', { month: 'short' }),
+        fullLabel: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        revenue: paidTotalsByMonth.get(key) || 0,
+        invoiceCount: paidCountByMonth.get(key) || 0,
+        pending: pendingTotalsByMonth.get(key) || 0,
+      });
+    }
+    const allTimePaid = invoices.filter(i => i.payment_status === 'paid').reduce((s, i) => s + Number(i.total || 0), 0);
+    const ytdPaid = invoices.filter(inv => {
+      const ds = inv.invoice_date;
+      return ds && new Date(ds).getFullYear() === now.getFullYear() && inv.payment_status === 'paid';
+    }).reduce((s, i) => s + Number(i.total || 0), 0);
+    const activeMonths = months12.filter(m => m.revenue > 0);
+    const avgMonthly = activeMonths.length > 0 ? allTimePaid / activeMonths.length : 0;
+    const bestMonth = activeMonths.length > 0 ? activeMonths.reduce((a, b) => b.revenue > a.revenue ? b : a) : null;
+    const pendingReceivable = invoices.filter(i => i.payment_status === 'pending' || i.payment_status === 'overdue').reduce((s, i) => s + Number(i.total || 0), 0);
+
+    $('#kpi-ytd-total').textContent = currency.format(ytdPaid);
+    $('#kpi-all-time').textContent = currency.format(allTimePaid);
+    $('#kpi-avg-month').textContent = currency.format(avgMonthly);
+    $('#kpi-best-month').textContent = bestMonth ? currency.format(bestMonth.revenue) : '—';
+    $('#kpi-best-month-label').textContent = bestMonth ? bestMonth.fullLabel : '';
+    $('#kpi-pending-receivable').textContent = currency.format(pendingReceivable);
+
+    renderProfitChart(months12);
+    renderProfitTable(months12, months12[months12.length - 1].key);
+
     // Status donut
     renderDonutChart(statusCounts);
 
@@ -728,6 +777,97 @@
     svg.innerHTML = svgContent;
 
     labelsEl.innerHTML = months.map(m => `<span>${m.label}</span>`).join('');
+  }
+
+  let profitShowAll = false;
+  function renderProfitChart(months12) {
+    const svg = $('#kpi-profit-chart');
+    const labelsEl = $('#kpi-profit-labels');
+    const tooltip = $('#kpi-profit-tooltip');
+    if (!svg) return;
+
+    const svgW = 580, svgH = 140, gap = 6;
+    const barCount = months12.length;
+    const barW = (svgW - gap * (barCount - 1)) / barCount;
+    const max = Math.max(...months12.map(m => m.revenue), 1);
+    const currentKey = months12[months12.length - 1].key;
+
+    const gridLines = [0.25, 0.5, 0.75, 1].map(frac => {
+      const y = svgH - frac * (svgH - 10);
+      const usdLabel = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(max * frac);
+      return `<line x1="0" y1="${y}" x2="${svgW}" y2="${y}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 4"/>
+              <text x="${svgW - 2}" y="${y - 3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${usdLabel}</text>`;
+    }).join('');
+
+    let bars = '';
+    months12.forEach((m, i) => {
+      const h = m.revenue > 0 ? Math.max((m.revenue / max) * (svgH - 10), 4) : 0;
+      const ph = m.pending > 0 ? Math.max((m.pending / max) * (svgH - 10), 3) : 0;
+      const x = i * (barW + gap);
+      const isCurrent = m.key === currentKey;
+      const fill = isCurrent ? '#2f9e44' : 'var(--purple-mid)';
+
+      bars += `<g class="profit-bar-group" data-idx="${i}">
+        <rect x="${x}" y="0" width="${barW}" height="${svgH}" fill="transparent"/>`;
+      if (ph > 0) {
+        bars += `<rect x="${x + barW * 0.25}" y="${svgH - ph}" width="${barW * 0.5}" height="${ph}" rx="3" fill="#f59f00" opacity="0.35"/>`;
+      }
+      if (h > 0) {
+        bars += `<rect class="kpi-bar" style="animation-delay:${(i * 0.05).toFixed(2)}s" x="${x}" y="${svgH - h}" width="${barW}" height="${h}" rx="4" fill="${fill}"/>`;
+      } else {
+        bars += `<rect x="${x}" y="${svgH - 3}" width="${barW}" height="3" rx="2" fill="var(--border)"/>`;
+      }
+      bars += `</g>`;
+    });
+
+    svg.innerHTML = gridLines + bars + `<line x1="0" y1="${svgH}" x2="${svgW}" y2="${svgH}" stroke="var(--border)" stroke-width="1"/>`;
+
+    // Labels
+    labelsEl.innerHTML = months12.map((m, i) => {
+      const isCurrent = m.key === currentKey;
+      return `<span style="color:${isCurrent ? '#2f9e44' : ''};font-weight:${isCurrent ? '700' : '400'};font-size:9px">${m.label}</span>`;
+    }).join('');
+
+    // Hover
+    const fmt = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+    svg.querySelectorAll('.profit-bar-group').forEach(g => {
+      const idx = Number(g.dataset.idx);
+      const m = months12[idx];
+      g.addEventListener('mouseenter', () => {
+        if (!tooltip) return;
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<strong>${m.fullLabel}</strong><br>💰 ${fmt(m.revenue)}<br>${m.invoiceCount} invoice${m.invoiceCount !== 1 ? 's' : ''} paid${m.pending > 0 ? `<br>⏳ Pending: ${fmt(m.pending)}` : ''}`;
+      });
+      g.addEventListener('mouseleave', () => { if (tooltip) tooltip.style.display = 'none'; });
+    });
+  }
+
+  function renderProfitTable(months12, currentKey) {
+    const tbody = $('#kpi-profit-table-body');
+    if (!tbody) return;
+    const fmt = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+    const rows = profitShowAll ? [...months12].reverse() : months12.filter(m => m.revenue > 0 || m.pending > 0).reverse().slice(0, 6);
+
+    tbody.innerHTML = rows.map((m, i) => {
+      const isCurrent = m.key === currentKey;
+      return `<tr class="${isCurrent ? 'profit-current' : ''}" style="animation-delay:${(i * 0.05).toFixed(2)}s">
+        <td style="font-weight:${isCurrent ? 800 : 600};color:${isCurrent ? '#2f9e44' : ''}">
+          ${m.fullLabel}${isCurrent ? '<span class="profit-current-badge">now</span>' : ''}
+        </td>
+        <td style="text-align:right;color:var(--text-muted)">${m.invoiceCount > 0 ? m.invoiceCount : '—'}</td>
+        <td class="profit-rev${m.revenue === 0 ? ' empty' : ''}" style="text-align:right">${m.revenue > 0 ? fmt(m.revenue) : '—'}</td>
+        <td class="profit-pending${m.pending === 0 ? ' empty' : ''}" style="text-align:right">${m.pending > 0 ? fmt(m.pending) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    const toggle = $('#kpi-profit-toggle');
+    if (toggle) {
+      toggle.textContent = profitShowAll ? 'Show recent ↑' : 'Show all 12 ↓';
+      toggle.onclick = () => {
+        profitShowAll = !profitShowAll;
+        renderProfitTable(months12, currentKey);
+      };
+    }
   }
 
   function renderDonutChart(statusCounts) {
