@@ -1144,25 +1144,34 @@ input.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(
   cursor: pointer;
   padding: 0;
 }
-.kpi-profit-table-wrap { overflow-x: auto; }
+.kpi-profit-table-wrap { overflow-x: hidden; width: 100%; }
 .kpi-profit-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
+  table-layout: fixed;
 }
+.kpi-profit-table colgroup col:nth-child(1) { width: 38%; }
+.kpi-profit-table colgroup col:nth-child(2) { width: 12%; }
+.kpi-profit-table colgroup col:nth-child(3) { width: 25%; }
+.kpi-profit-table colgroup col:nth-child(4) { width: 25%; }
 .kpi-profit-table th {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
-  padding: 4px 6px 8px;
+  padding: 4px 4px 8px;
   border-bottom: 2px solid var(--border);
+  white-space: nowrap;
 }
 .kpi-profit-table td {
-  padding: 9px 6px;
+  padding: 8px 4px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kpi-profit-table tr.profit-current td { background: rgba(47,158,68,0.05); }
 .kpi-profit-table td.profit-rev { font-weight: 700; color: #2f9e44; }
