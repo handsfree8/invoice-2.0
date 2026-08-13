@@ -142,6 +142,12 @@
       const prop = t.properties;
       const clientEl = $('#client-name');
       if (prop && clientEl && !clientEl.value) clientEl.value = prop.name;
+      const addrEl = $('#service-address');
+      if (addrEl && !addrEl.value && prop) {
+        const parts = [prop.address, prop.city, prop.state].filter(Boolean);
+        if (t.unit_number) parts.unshift(`Unit ${t.unit_number}`);
+        addrEl.value = parts.join(', ');
+      }
       if (t.title) {
         const firstDesc = itemsBody.querySelector('tr input.w');
         const desc = t.title + (t.unit_number ? ` (Unit ${t.unit_number})` : '');
@@ -219,6 +225,11 @@
       // Fill client name: prefer client_name field, fall back to property name
       input.value = prop.client_name || prop.name;
       dropdown.style.display = 'none';
+      // Auto-fill service address from property
+      const addrEl = $('#service-address');
+      if (addrEl && !addrEl.value) {
+        addrEl.value = [prop.address, prop.city, prop.state].filter(Boolean).join(', ');
+      }
       if (tag) {
         tag.style.display = 'inline-flex';
         tag.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
@@ -305,6 +316,7 @@
         payment_method: data.invoice.paymentMethod || null,
         terms: data.invoice.terms || null,
         notes: data.invoice.notes || null,
+        service_address: data.invoice.serviceAddress || null,
         warranty_disclaimer: data.warrantyDisclaimer || null,
         tax_rate: Number(data.invoice.taxRate || 0),
         discount_rate: Number(data.invoice.discountRate || 0),
@@ -1107,6 +1119,7 @@
         paymentMethod: inv.payment_method || 'Cash',
         terms:         inv.terms || '',
         notes:         inv.notes || '',
+        serviceAddress: inv.service_address || '',
       },
       items: (items || []).map(it => ({
         description: it.description || '',
@@ -1396,6 +1409,7 @@
         paymentMethod: $('#payment-method').value || 'Cash',
         terms:         $('#terms').value || '',
         notes:         localStorage.getItem('invoiceNotes') || notesEl.value || '',
+        serviceAddress: ($('#service-address')?.value || '').trim(),
       },
       items: getRows(),
       warrantyDisclaimer: localStorage.getItem('warrantyDisclaimer') || disclaimerEl.value.trim(),
@@ -1413,6 +1427,7 @@
     $('#payment-method').value = d.invoice?.paymentMethod || 'Cash';
     $('#terms').value          = d.invoice?.terms         || '';
     notesEl.value              = d.invoice?.notes         || '';
+    const saEl = $('#service-address'); if (saEl) saEl.value = d.invoice?.serviceAddress || '';
     itemsBody.innerHTML = '';
     (d.items || []).forEach(addRow);
     if ((d.items || []).length === 0) addRow();
@@ -1537,6 +1552,13 @@
       doc.setFont('helvetica', 'normal');
       doc.text(data.invoice.client || '—', left + 40, y);
       y += 14;
+      if (data.invoice.serviceAddress) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Location: ', left, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(data.invoice.serviceAddress, left + 55, y);
+        y += 14;
+      }
 
       // Items table
       const tableBody = data.items.map(it => [
@@ -1660,6 +1682,7 @@
     linkedTicketId = null;
     linkedPropertyId = null;
     $('#client-name').value = '';
+    const saReset = $('#service-address'); if (saReset) saReset.value = '';
     $('#terms').value = '';
     notesEl.value = '';
     taxRateEl.value = 0;
