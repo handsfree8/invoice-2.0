@@ -133,14 +133,15 @@
               <span class="field-label">Date</span>
               <input id="inv-date" type="date" class="field-input"/>
             </label>
-            <label class="field field-full">
-              <span class="field-label">Client Name</span>
-              <input id="client-name" type="text" placeholder="Client name" class="field-input" list="client-suggestions"/>
-              <datalist id="client-suggestions">
-                <option value="jayandj.ventures@gmail.com"></option>
-                <option value="Aaron Foy"></option>
-              </datalist>
-            </label>
+            <div class="field field-full" style="display:flex;flex-direction:column;gap:4px;">
+              <span class="field-label">Client / Property</span>
+              <div class="property-search-wrap" id="property-search-wrap">
+                <input id="client-name" type="text" placeholder="Search property or type client name…" class="field-input" autocomplete="off"/>
+                <div class="property-dropdown" id="property-dropdown" style="display:none"></div>
+              </div>
+              <span class="property-linked-tag" id="property-linked-tag" style="display:none"></span>
+              <input type="hidden" id="linked-property-id"/>
+            </div>
           </div>
         </div>
 

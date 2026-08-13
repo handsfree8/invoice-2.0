@@ -193,6 +193,97 @@
     }
   }
 
+  /* ── Property Search Selector ───────────────────── */
+  let allProperties = [];
+  let propertySearchTimeout = null;
+
+  async function loadPropertyList() {
+    const { data } = await supabase
+      .from('properties')
+      .select('id, name, address, city, state, client_name, client_email')
+      .order('name', { ascending: true })
+      .limit(200);
+    allProperties = data || [];
+  }
+
+  function initPropertySelector() {
+    const input = $('#client-name');
+    const dropdown = $('#property-dropdown');
+    const tag = $('#property-linked-tag');
+    const hiddenId = $('#linked-property-id');
+    if (!input || !dropdown) return;
+
+    function linkProperty(prop) {
+      linkedPropertyId = prop.id;
+      if (hiddenId) hiddenId.value = prop.id;
+      // Fill client name: prefer client_name field, fall back to property name
+      input.value = prop.client_name || prop.name;
+      dropdown.style.display = 'none';
+      if (tag) {
+        tag.style.display = 'inline-flex';
+        tag.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          ${escHtml(prop.name)}${prop.address ? ' · ' + escHtml(prop.address) : ''}
+          <button title="Unlink property">×</button>`;
+        tag.querySelector('button').addEventListener('click', () => {
+          linkedPropertyId = null;
+          if (hiddenId) hiddenId.value = '';
+          tag.style.display = 'none';
+        });
+      }
+    }
+
+    function renderDropdown(query) {
+      const q = query.toLowerCase().trim();
+      const matches = q.length === 0 ? allProperties : allProperties.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.address || '').toLowerCase().includes(q) ||
+        (p.city || '').toLowerCase().includes(q) ||
+        (p.client_name || '').toLowerCase().includes(q)
+      );
+      if (matches.length === 0) {
+        dropdown.innerHTML = `<div class="property-option-empty">No properties found — type freely to set a custom name</div>`;
+      } else {
+        dropdown.innerHTML = matches.slice(0, 8).map(p => `
+          <div class="property-option" data-id="${escHtml(p.id)}">
+            <span class="property-option-name">${escHtml(p.client_name || p.name)}</span>
+            <span class="property-option-addr">${escHtml([p.address, p.city, p.state].filter(Boolean).join(', '))}</span>
+          </div>
+        `).join('');
+        dropdown.querySelectorAll('.property-option').forEach(el => {
+          el.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const prop = allProperties.find(p => p.id === el.dataset.id);
+            if (prop) linkProperty(prop);
+          });
+        });
+      }
+      dropdown.style.display = 'block';
+    }
+
+    input.addEventListener('focus', () => {
+      if (!linkedPropertyId) renderDropdown(input.value);
+    });
+    input.addEventListener('input', () => {
+      // Clear link if user edits manually after linking
+      if (linkedPropertyId) {
+        linkedPropertyId = null;
+        if (hiddenId) hiddenId.value = '';
+        if (tag) tag.style.display = 'none';
+      }
+      clearTimeout(propertySearchTimeout);
+      propertySearchTimeout = setTimeout(() => renderDropdown(input.value), 120);
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') dropdown.style.display = 'none';
+    });
+  }
+
+  // Wire up after properties are loaded
+  loadPropertyList().then(initPropertySelector);
+
   /* ── Save invoice to history (Supabase) ──────────── */
   async function saveInvoiceToHistory(data, calc) {
     try {
