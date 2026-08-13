@@ -133,7 +133,7 @@
     try {
       const { data: t, error } = await supabase
         .from('tickets')
-        .select('id, title, unit_number, property_id, properties(name, address, city, state)')
+        .select('id, title, unit_number, reported_address, property_id, properties(name, address, city, state)')
         .eq('id', ticketId)
         .single();
       if (error) throw error;
@@ -143,10 +143,11 @@
       const clientEl = $('#client-name');
       if (prop && clientEl && !clientEl.value) clientEl.value = prop.name;
       const addrEl = $('#service-address');
-      if (addrEl && !addrEl.value && prop) {
-        const parts = [prop.address, prop.city, prop.state].filter(Boolean);
+      if (addrEl && !addrEl.value) {
+        // Use the ticket's own reported_address (the exact job site), then unit_number
+        const parts = [t.reported_address].filter(Boolean);
         if (t.unit_number) parts.unshift(`Unit ${t.unit_number}`);
-        addrEl.value = parts.join(', ');
+        addrEl.value = parts.join(' — ');
       }
       if (t.title) {
         const firstDesc = itemsBody.querySelector('tr input.w');
