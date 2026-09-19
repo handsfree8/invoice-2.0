@@ -37,7 +37,10 @@
       // so we parse the digits of each and take the numeric max.
       let max = 0;
       for (const row of data) {
-        const m = String(row.invoice_number || '').match(/(\d+)/);
+        const s = String(row.invoice_number || '');
+        // Skip DEMO- and other non-standard prefixes so they don't inflate the counter
+        if (/^[A-Za-z]+-\d/.test(s) && !/^INV-/i.test(s)) continue;
+        const m = s.match(/(\d+)/);
         if (m) max = Math.max(max, Number(m[1]));
       }
       return String(max + 1).padStart(6, '0');
