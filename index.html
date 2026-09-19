@@ -431,6 +431,27 @@
           </div>
         </div>
 
+        <!-- Real net-profit band (revenue − costs − overhead) -->
+        <div class="kpi-net-band" id="kpi-net-band">
+          <div class="kpi-net-main">
+            <span class="kpi-net-label">Ganancia neta — este mes</span>
+            <span class="kpi-net-value" id="kpi-net-month">$0</span>
+            <span class="kpi-net-sub" id="kpi-net-month-detail">—</span>
+          </div>
+          <div class="kpi-net-side">
+            <div class="kpi-net-mini">
+              <span class="kpi-net-mini-label">Neta (año)</span>
+              <span class="kpi-net-mini-value" id="kpi-net-ytd">$0</span>
+            </div>
+            <div class="kpi-net-mini">
+              <span class="kpi-net-mini-label">Gastos fijos / mes</span>
+              <span class="kpi-net-mini-value" id="kpi-net-overhead">$0</span>
+            </div>
+            <button class="btn btn-sm kpi-net-oh-btn" id="btn-edit-overhead" type="button">Ajustar gastos fijos</button>
+          </div>
+          <div class="kpi-net-coverage" id="kpi-net-coverage"></div>
+        </div>
+
         <!-- 12-month animated bar chart with hover -->
         <div class="kpi-profit-chart-wrap" id="kpi-profit-chart-wrap">
           <svg id="kpi-profit-chart" viewBox="0 0 580 160" style="width:100%;height:140px;min-width:300px;display:block;overflow:visible"></svg>
@@ -452,13 +473,14 @@
         </div>
         <div class="kpi-profit-table-wrap">
           <table class="kpi-profit-table">
-            <colgroup><col/><col/><col/><col/></colgroup>
+            <colgroup><col/><col/><col/><col/><col/></colgroup>
             <thead>
               <tr>
                 <th>Month</th>
                 <th style="text-align:right">Inv.</th>
                 <th style="text-align:right">Collected</th>
                 <th style="text-align:right">Pending</th>
+                <th style="text-align:right">Net Profit</th>
               </tr>
             </thead>
             <tbody id="kpi-profit-table-body"></tbody>
@@ -544,6 +566,74 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           Create Consolidated Invoice
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cost / Profit modal (per invoice) -->
+  <div id="cost-modal-backdrop" class="consolidate-modal-backdrop" style="display:none;">
+    <div class="consolidate-modal cost-modal">
+      <h2>Costo y Ganancia del trabajo</h2>
+      <p class="consolidate-modal-sub" id="cost-modal-sub">Captura el costo real detrás de esta factura</p>
+
+      <div class="cost-section">
+        <div class="cost-section-head">
+          <span class="field-label">Materiales</span>
+          <button class="btn btn-sm cost-add" id="cost-add-material" type="button">＋ Material</button>
+        </div>
+        <div id="cost-materials"></div>
+      </div>
+
+      <div class="cost-section">
+        <span class="field-label">Mano de obra (tú)</span>
+        <div class="cost-labor-row">
+          <label class="field"><span class="field-label">Tus horas</span>
+            <input id="cost-hours" type="number" min="0" step="0.25" class="field-input" placeholder="0" inputmode="decimal"/></label>
+          <label class="field"><span class="field-label">Tu tarifa / hora</span>
+            <input id="cost-rate" type="number" min="0" step="1" class="field-input" placeholder="50" inputmode="decimal"/></label>
+        </div>
+      </div>
+
+      <div class="cost-section">
+        <div class="cost-section-head">
+          <span class="field-label">Ayudantes / trabajadores</span>
+          <button class="btn btn-sm cost-add" id="cost-add-helper" type="button">＋ Ayudante</button>
+        </div>
+        <div id="cost-helpers"></div>
+      </div>
+
+      <div class="cost-result" id="cost-result">
+        <div class="cost-result-row"><span>Cobrado</span><span id="cost-r-price">$0.00</span></div>
+        <div class="cost-result-row sub"><span>− Materiales</span><span id="cost-r-mat">$0.00</span></div>
+        <div class="cost-result-row sub"><span>− Mano de obra (tú)</span><span id="cost-r-labor">$0.00</span></div>
+        <div class="cost-result-row sub"><span>− Ayudantes</span><span id="cost-r-help">$0.00</span></div>
+        <div class="cost-result-row total"><span>Ganancia bruta del trabajo</span><span id="cost-r-gross">$0.00</span></div>
+        <div class="cost-result-note" id="cost-r-margin">0% margen · los gastos fijos del mes se descuentan aparte en el panel</div>
+      </div>
+
+      <div class="consolidate-actions">
+        <button class="btn btn-ghost" id="btn-cost-dismiss" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="btn-cost-save" type="button">Guardar costo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overhead settings modal -->
+  <div id="overhead-modal-backdrop" class="consolidate-modal-backdrop" style="display:none;">
+    <div class="consolidate-modal cost-modal">
+      <h2>Gastos fijos mensuales</h2>
+      <p class="consolidate-modal-sub">Costos que pagas cada mes exista o no trabajo (seguro, herramientas, carro). Se descuentan una vez al mes de tu ganancia.</p>
+      <div class="cost-section">
+        <div class="cost-section-head">
+          <span class="field-label">Conceptos</span>
+          <button class="btn btn-sm cost-add" id="overhead-add" type="button">＋ Gasto</button>
+        </div>
+        <div id="overhead-items"></div>
+      </div>
+      <div class="cost-result-row total" style="margin-top:6px"><span>Total fijo / mes</span><span id="overhead-total">$0.00</span></div>
+      <div class="consolidate-actions">
+        <button class="btn btn-ghost" id="btn-overhead-dismiss" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="btn-overhead-save" type="button">Guardar gastos fijos</button>
       </div>
     </div>
   </div>

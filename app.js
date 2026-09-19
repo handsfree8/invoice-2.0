@@ -384,6 +384,7 @@
 
   async function loadHistory() {
     if (!historyBody) return;
+    await loadProfitData();
 
     const clientFilter = ($('#history-filter-client')?.value || '').trim().toLowerCase();
     const fromFilter   = $('#history-filter-from')?.value || '';
@@ -451,6 +452,7 @@
             <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="duplicate">Duplicate</button>
             <button class="btn btn-sm btn-link" data-id="${inv.id}">Copy Link</button>
             <button class="btn btn-sm btn-paylink" data-id="${inv.id}" data-current="${escHtml(inv.payment_link || '')}">${inv.payment_link ? 'Edit Pay Link' : 'Add Pay Link'}</button>
+            <button class="btn btn-sm btn-cost${jobCostsByInvoice.has(inv.id) ? ' btn-cost-set' : ''}" data-id="${inv.id}" data-total="${Number(inv.total || 0)}" data-client="${escHtml(inv.client_name || '')}" data-number="${escHtml(inv.invoice_number || '')}">${jobCostsByInvoice.has(inv.id) ? '✓ Costo' : 'Costo / Ganancia'}</button>
             <button class="btn btn-sm btn-danger btn-delete" data-id="${inv.id}">Delete</button>
             ${isParent ? `<button class="btn btn-sm btn-unconsolidate" data-id="${inv.id}" data-number="${escHtml(inv.invoice_number||'')}" title="Release all original invoices back to pending">Unconsolidate</button>` : ''}
           </div>
@@ -479,7 +481,240 @@
       btn.addEventListener('click', () => unconsolidateInvoice(btn.dataset.id, btn.dataset.number));
     });
 
+    historyBody.querySelectorAll('.btn-cost').forEach(btn => {
+      btn.addEventListener('click', () => openCostModal(btn.dataset));
+    });
+
     wireCheckboxes();
+  }
+
+  /* ── Cost / Profit capture modal ─────────────────── */
+  const costBackdrop = $('#cost-modal-backdrop');
+  let costInvoice = null;      // { id, total, client, number }
+  let costDraftMaterials = []; // [{desc, amount}]
+  let costDraftHelpers = [];   // [{name, mode, hours, rate, flat}]
+
+  function renderCostMaterials() {
+    const box = $('#cost-materials');
+    if (!box) return;
+    box.innerHTML = '';
+    costDraftMaterials.forEach((m, i) => {
+      const row = document.createElement('div');
+      row.className = 'cost-row';
+      row.innerHTML =
+        `<input type="text" placeholder="Descripción" value="${escHtml(m.desc)}" data-ci="${i}" data-cf="desc"/>` +
+        `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="0" inputmode="decimal" value="${m.amount || ''}" data-ci="${i}" data-cf="amount"/></div>` +
+        `<button class="cost-del" type="button" data-cdel="${i}" title="Quitar">×</button>`;
+      box.appendChild(row);
+    });
+    if (costDraftMaterials.length === 0) box.innerHTML = '<div class="cost-empty">Sin materiales.</div>';
+  }
+
+  function renderCostHelpers() {
+    const box = $('#cost-helpers');
+    if (!box) return;
+    box.innerHTML = '';
+    costDraftHelpers.forEach((h, i) => {
+      const mode = h.mode === 'flat' ? 'flat' : 'hour';
+      const row = document.createElement('div');
+      row.className = 'cost-row helper' + (mode === 'flat' ? ' flat' : '');
+      let fields;
+      if (mode === 'flat') {
+        fields = `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="por día / trabajo" inputmode="decimal" value="${h.flat || ''}" data-hi="${i}" data-hf="flat"/></div>`;
+      } else {
+        fields =
+          `<input class="cost-hrs" type="number" min="0" step="0.25" placeholder="hrs" inputmode="decimal" value="${h.hours || ''}" data-hi="${i}" data-hf="hours"/>` +
+          `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="22" inputmode="decimal" value="${h.rate || ''}" data-hi="${i}" data-hf="rate"/></div>`;
+      }
+      row.innerHTML =
+        `<input type="text" placeholder="Ayudante" value="${escHtml(h.name)}" data-hi="${i}" data-hf="name"/>` +
+        `<select data-hi="${i}" data-hf="mode"><option value="hour"${mode === 'hour' ? ' selected' : ''}>Por hora</option><option value="flat"${mode === 'flat' ? ' selected' : ''}>Precio fijo</option></select>` +
+        fields +
+        `<button class="cost-del" type="button" data-hdel="${i}" title="Quitar">×</button>`;
+      box.appendChild(row);
+    });
+    if (costDraftHelpers.length === 0) box.innerHTML = '<div class="cost-empty">Sin ayudantes en este trabajo.</div>';
+  }
+
+  function recalcCost() {
+    const price = Number(costInvoice?.total || 0);
+    const mat = costDraftMaterials.reduce((s, m) => s + Number(m.amount || 0), 0);
+    const labor = Number($('#cost-hours').value || 0) * Number($('#cost-rate').value || 0);
+    const help = costDraftHelpers.reduce((s, h) => s + helperCost(h), 0);
+    const gross = price - mat - labor - help;
+    $('#cost-r-price').textContent = currency.format(price);
+    $('#cost-r-mat').textContent = '−' + currency.format(mat);
+    $('#cost-r-labor').textContent = '−' + currency.format(labor);
+    $('#cost-r-help').textContent = '−' + currency.format(help);
+    const g = $('#cost-r-gross');
+    g.textContent = currency.format(gross);
+    g.style.color = gross >= 0 ? '#2f9e44' : '#c0392b';
+    const pct = price > 0 ? Math.round((gross / price) * 100) : 0;
+    $('#cost-r-margin').textContent = `${pct}% margen · los gastos fijos del mes se descuentan aparte en el panel`;
+  }
+
+  function openCostModal(ds) {
+    costInvoice = { id: ds.id, total: Number(ds.total || 0), client: ds.client || '', number: ds.number || '' };
+    const existing = jobCostsByInvoice.get(ds.id);
+    costDraftMaterials = existing && Array.isArray(existing.materials)
+      ? existing.materials.map(m => ({ desc: m.desc || '', amount: m.amount })) : [];
+    costDraftHelpers = existing && Array.isArray(existing.helpers)
+      ? existing.helpers.map(h => ({ name: h.name || '', mode: h.mode || 'hour', hours: h.hours, rate: h.rate, flat: h.flat })) : [];
+    $('#cost-hours').value = existing ? (existing.my_hours || '') : '';
+    $('#cost-rate').value = existing ? (existing.my_rate || 50) : 50;
+    $('#cost-modal-sub').textContent = `Factura #${costInvoice.number || '—'} · ${costInvoice.client || '—'} · cobrado ${currency.format(costInvoice.total)}`;
+    renderCostMaterials();
+    renderCostHelpers();
+    recalcCost();
+    costBackdrop.style.display = 'flex';
+  }
+
+  function closeCostModal() { costBackdrop.style.display = 'none'; costInvoice = null; }
+
+  if (costBackdrop) {
+    $('#cost-add-material').addEventListener('click', () => { costDraftMaterials.push({ desc: '', amount: '' }); renderCostMaterials(); recalcCost(); });
+    $('#cost-add-helper').addEventListener('click', () => { costDraftHelpers.push({ name: '', mode: 'hour', hours: '', rate: 22 }); renderCostHelpers(); recalcCost(); });
+    $('#cost-hours').addEventListener('input', recalcCost);
+    $('#cost-rate').addEventListener('input', recalcCost);
+    $('#cost-materials').addEventListener('input', e => {
+      const i = e.target.dataset.ci, f = e.target.dataset.cf;
+      if (i == null) return; costDraftMaterials[i][f] = e.target.value; recalcCost();
+    });
+    $('#cost-materials').addEventListener('click', e => {
+      const d = e.target.dataset.cdel;
+      if (d != null) { costDraftMaterials.splice(+d, 1); renderCostMaterials(); recalcCost(); }
+    });
+    $('#cost-helpers').addEventListener('input', e => {
+      const i = e.target.dataset.hi, f = e.target.dataset.hf;
+      if (i == null) return;
+      costDraftHelpers[i][f] = e.target.value;
+      if (f === 'mode') { renderCostHelpers(); }
+      recalcCost();
+    });
+    $('#cost-helpers').addEventListener('click', e => {
+      const d = e.target.dataset.hdel;
+      if (d != null) { costDraftHelpers.splice(+d, 1); renderCostHelpers(); recalcCost(); }
+    });
+    $('#btn-cost-dismiss').addEventListener('click', closeCostModal);
+    costBackdrop.addEventListener('click', e => { if (e.target === costBackdrop) closeCostModal(); });
+    $('#btn-cost-save').addEventListener('click', saveCost);
+  }
+
+  async function saveCost() {
+    if (!costInvoice) return;
+    const btn = $('#btn-cost-save');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id || null;
+      const materials = costDraftMaterials
+        .filter(m => (m.desc && m.desc.trim()) || Number(m.amount) > 0)
+        .map(m => ({ desc: m.desc || 'Material', amount: Number(m.amount || 0) }));
+      const helpers = costDraftHelpers
+        .filter(h => (h.name && h.name.trim()) || (h.mode === 'flat' ? Number(h.flat) > 0 : Number(h.hours) > 0))
+        .map(h => h.mode === 'flat'
+          ? { name: h.name || 'Ayudante', mode: 'flat', flat: Number(h.flat || 0) }
+          : { name: h.name || 'Ayudante', mode: 'hour', hours: Number(h.hours || 0), rate: Number(h.rate || 22) });
+      const payload = {
+        invoice_id: costInvoice.id,
+        user_id: userId,
+        materials,
+        my_hours: Number($('#cost-hours').value || 0),
+        my_rate: Number($('#cost-rate').value || 0),
+        helpers,
+      };
+      const { error } = await supabase.from('job_costs').upsert(payload, { onConflict: 'invoice_id' });
+      if (error) { console.error('Save cost failed:', error); showToast('No se pudo guardar el costo: ' + error.message); return; }
+      showToast('Costo guardado ✓');
+      closeCostModal();
+      await loadProfitData();
+      loadHistory();
+      loadKPIs();
+    } catch (err) {
+      console.error('Unexpected error saving cost:', err);
+      showToast('Error al guardar el costo.');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Guardar costo';
+    }
+  }
+
+  /* ── Overhead settings modal ─────────────────────── */
+  const overheadBackdrop = $('#overhead-modal-backdrop');
+  let overheadDraft = []; // [{label, amount}]
+  const DEFAULT_OVERHEAD = [
+    { label: 'Seguro de la compañía', amount: 150 },
+    { label: 'Desgaste de herramientas', amount: 120 },
+    { label: 'Carro (gas + desgaste)', amount: 140 },
+  ];
+
+  function renderOverheadItems() {
+    const box = $('#overhead-items');
+    if (!box) return;
+    box.innerHTML = '';
+    overheadDraft.forEach((o, i) => {
+      const row = document.createElement('div');
+      row.className = 'cost-row';
+      row.innerHTML =
+        `<input type="text" placeholder="Concepto" value="${escHtml(o.label)}" data-oi="${i}" data-of="label"/>` +
+        `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="0" inputmode="decimal" value="${o.amount || ''}" data-oi="${i}" data-of="amount"/></div>` +
+        `<button class="cost-del" type="button" data-odel="${i}" title="Quitar">×</button>`;
+      box.appendChild(row);
+    });
+    const total = overheadDraft.reduce((s, o) => s + Number(o.amount || 0), 0);
+    $('#overhead-total').textContent = currency.format(total);
+  }
+
+  function openOverheadModal() {
+    overheadDraft = overheadItems.length
+      ? overheadItems.map(o => ({ label: o.label || '', amount: o.amount }))
+      : DEFAULT_OVERHEAD.map(o => ({ ...o }));
+    renderOverheadItems();
+    overheadBackdrop.style.display = 'flex';
+  }
+
+  if (overheadBackdrop) {
+    $('#overhead-add').addEventListener('click', () => { overheadDraft.push({ label: '', amount: '' }); renderOverheadItems(); });
+    $('#overhead-items').addEventListener('input', e => {
+      const i = e.target.dataset.oi, f = e.target.dataset.of;
+      if (i == null) return; overheadDraft[i][f] = e.target.value; renderOverheadItems();
+    });
+    $('#overhead-items').addEventListener('click', e => {
+      const d = e.target.dataset.odel;
+      if (d != null) { overheadDraft.splice(+d, 1); renderOverheadItems(); }
+    });
+    $('#btn-overhead-dismiss').addEventListener('click', () => { overheadBackdrop.style.display = 'none'; });
+    overheadBackdrop.addEventListener('click', e => { if (e.target === overheadBackdrop) overheadBackdrop.style.display = 'none'; });
+    $('#btn-overhead-save').addEventListener('click', saveOverhead);
+    const editBtn = $('#btn-edit-overhead');
+    if (editBtn) editBtn.addEventListener('click', openOverheadModal);
+  }
+
+  async function saveOverhead() {
+    const btn = $('#btn-overhead-save');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id || null;
+      const items = overheadDraft
+        .filter(o => (o.label && o.label.trim()) || Number(o.amount) > 0)
+        .map(o => ({ label: o.label || 'Gasto', amount: Number(o.amount || 0) }));
+      let error;
+      if (overheadRowId) {
+        ({ error } = await supabase.from('overhead_settings').update({ items }).eq('id', overheadRowId));
+      } else {
+        ({ error } = await supabase.from('overhead_settings').insert({ user_id: userId, items }));
+      }
+      if (error) { console.error('Save overhead failed:', error); showToast('No se pudieron guardar los gastos fijos: ' + error.message); return; }
+      showToast('Gastos fijos guardados ✓');
+      overheadBackdrop.style.display = 'none';
+      await loadProfitData();
+      loadKPIs();
+    } catch (err) {
+      console.error('Unexpected error saving overhead:', err);
+      showToast('Error al guardar los gastos fijos.');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Guardar gastos fijos';
+    }
   }
 
   async function unconsolidateInvoice(id, number) {
@@ -522,6 +757,44 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
 
+  /* ── Job costs + overhead (real net profit) ──────── */
+  // These power the true "Net Profit" numbers: invoice total − materials −
+  // your labor − helpers, then monthly fixed overhead subtracted once a month.
+  let jobCostsByInvoice = new Map(); // invoice_id → job_costs row
+  let overheadItems = [];            // [{label, amount}]
+  let overheadMonthly = 0;           // sum of overheadItems
+  let overheadRowId = null;          // existing overhead_settings row id (if any)
+
+  function helperCost(h) {
+    if (!h) return 0;
+    return h.mode === 'flat' ? Number(h.flat || 0) : Number(h.hours || 0) * Number(h.rate || 0);
+  }
+  // Returns the total captured cost for a job_costs row, or null if none captured.
+  function costOfRow(c) {
+    if (!c) return null;
+    const mat = (c.materials || []).reduce((s, m) => s + Number(m.amount || 0), 0);
+    const labor = Number(c.my_hours || 0) * Number(c.my_rate || 0);
+    const help = (c.helpers || []).reduce((s, h) => s + helperCost(h), 0);
+    return mat + labor + help;
+  }
+
+  async function loadProfitData() {
+    try {
+      const [costsRes, ohRes] = await Promise.all([
+        supabase.from('job_costs').select('*'),
+        supabase.from('overhead_settings').select('*').order('effective_from', { ascending: false }).limit(1),
+      ]);
+      jobCostsByInvoice = new Map();
+      (costsRes.data || []).forEach(c => { if (c.invoice_id) jobCostsByInvoice.set(c.invoice_id, c); });
+      const row = (ohRes.data && ohRes.data[0]) || null;
+      overheadRowId = row ? row.id : null;
+      overheadItems = row && Array.isArray(row.items) ? row.items : [];
+      overheadMonthly = overheadItems.reduce((s, i) => s + Number(i.amount || 0), 0);
+    } catch (err) {
+      console.error('Load profit data failed:', err);
+    }
+  }
+
   async function loadKPIs() {
     const panel = $('.kpi-panel');
     if (!panel) return;
@@ -538,6 +811,7 @@
     }
 
     const invoices = rows || [];
+    await loadProfitData();
     const now = new Date();
     const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -620,6 +894,8 @@
     const paidTotalsByMonth = new Map();
     const pendingTotalsByMonth = new Map();
     const paidCountByMonth = new Map();
+    const paidCostByMonth = new Map();
+    let paidWithCost = 0, paidTotalCount = 0;
     invoices.forEach(inv => {
       const total = Number(inv.total || 0);
       const status = inv.payment_status || 'pending';
@@ -628,6 +904,12 @@
       if (status === 'paid') {
         paidTotalsByMonth.set(mKey, (paidTotalsByMonth.get(mKey) || 0) + total);
         paidCountByMonth.set(mKey, (paidCountByMonth.get(mKey) || 0) + 1);
+        paidTotalCount += 1;
+        const cst = costOfRow(jobCostsByInvoice.get(inv.id));
+        if (cst != null) {
+          paidCostByMonth.set(mKey, (paidCostByMonth.get(mKey) || 0) + cst);
+          paidWithCost += 1;
+        }
       } else if (status === 'pending' || status === 'overdue') {
         pendingTotalsByMonth.set(mKey, (pendingTotalsByMonth.get(mKey) || 0) + total);
       }
@@ -636,13 +918,19 @@
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const rev = paidTotalsByMonth.get(key) || 0;
+      const cost = paidCostByMonth.get(key) || 0;
       months12.push({
         key,
         label: d.toLocaleDateString('en-US', { month: 'short' }),
         fullLabel: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        revenue: paidTotalsByMonth.get(key) || 0,
+        revenue: rev,
         invoiceCount: paidCountByMonth.get(key) || 0,
         pending: pendingTotalsByMonth.get(key) || 0,
+        cost,
+        // Overhead is a real monthly cost, but only charge it to months that had
+        // work — an empty month showing -overhead would be misleading noise.
+        net: rev > 0 ? rev - cost - overheadMonthly : 0,
       });
     }
     const allTimePaid = invoices.filter(i => i.payment_status === 'paid').reduce((s, i) => s + Number(i.total || 0), 0);
@@ -661,6 +949,33 @@
     $('#kpi-best-month').textContent = bestMonth ? currency.format(bestMonth.revenue) : '—';
     $('#kpi-best-month-label').textContent = bestMonth ? bestMonth.fullLabel : '';
     $('#kpi-pending-receivable').textContent = currency.format(pendingReceivable);
+
+    // Real net-profit band
+    const setTxt = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
+    const thisMonthObj = months12.find(m => m.key === thisMonthKey);
+    const netThisMonth = thisMonthObj ? thisMonthObj.net : 0;
+    const netYtd = months12
+      .filter(m => m.key.startsWith(String(now.getFullYear())))
+      .reduce((s, m) => s + m.net, 0);
+    setTxt('#kpi-net-month', currency.format(netThisMonth));
+    setTxt('#kpi-net-ytd', currency.format(netYtd));
+    setTxt('#kpi-net-overhead', currency.format(overheadMonthly));
+    const netMonthEl = $('#kpi-net-month');
+    if (netMonthEl) netMonthEl.style.color = netThisMonth >= 0 ? '#2f9e44' : '#c0392b';
+    const nmDetail = $('#kpi-net-month-detail');
+    if (nmDetail) {
+      nmDetail.textContent = (thisMonthObj && thisMonthObj.revenue > 0)
+        ? `${currency.format(thisMonthObj.revenue)} cobrado − ${currency.format(thisMonthObj.cost)} costos − ${currency.format(overheadMonthly)} fijos`
+        : 'Sin trabajos cobrados este mes';
+    }
+    const cov = $('#kpi-net-coverage');
+    if (cov) {
+      cov.textContent = paidTotalCount > 0
+        ? (paidWithCost >= paidTotalCount
+            ? `Costo capturado en las ${paidTotalCount} facturas cobradas ✓`
+            : `Costo capturado en ${paidWithCost} de ${paidTotalCount} facturas cobradas — captura el resto para una neta exacta`)
+        : 'Marca facturas como pagadas y captura su costo para ver tu ganancia neta.';
+    }
 
     renderProfitChart(months12);
     renderProfitTable(months12, months12[months12.length - 1].key);
@@ -964,6 +1279,7 @@
         <td style="text-align:right;color:var(--text-muted)">${m.invoiceCount > 0 ? m.invoiceCount : '—'}</td>
         <td class="profit-rev${m.revenue === 0 ? ' empty' : ''}" style="text-align:right">${m.revenue > 0 ? fmt(m.revenue) : '—'}</td>
         <td class="profit-pending${m.pending === 0 ? ' empty' : ''}" style="text-align:right">${m.pending > 0 ? fmt(m.pending) : '—'}</td>
+        <td style="text-align:right;font-weight:700;color:${m.revenue > 0 ? (m.net >= 0 ? '#2f9e44' : '#c0392b') : 'var(--text-muted)'}">${m.revenue > 0 ? fmt(m.net) : '—'}</td>
       </tr>`;
     }).join('');
 
