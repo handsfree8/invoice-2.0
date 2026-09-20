@@ -452,7 +452,7 @@
             <button class="btn btn-sm btn-load" data-id="${inv.id}" data-mode="duplicate">Duplicate</button>
             <button class="btn btn-sm btn-link" data-id="${inv.id}">Copy Link</button>
             <button class="btn btn-sm btn-paylink" data-id="${inv.id}" data-current="${escHtml(inv.payment_link || '')}">${inv.payment_link ? 'Edit Pay Link' : 'Add Pay Link'}</button>
-            <button class="btn btn-sm btn-cost${jobCostsByInvoice.has(inv.id) ? ' btn-cost-set' : ''}" data-id="${inv.id}" data-total="${Number(inv.total || 0)}" data-client="${escHtml(inv.client_name || '')}" data-number="${escHtml(inv.invoice_number || '')}">${jobCostsByInvoice.has(inv.id) ? '✓ Costo' : 'Costo / Ganancia'}</button>
+            <button class="btn btn-sm btn-cost${jobCostsByInvoice.has(inv.id) ? ' btn-cost-set' : ''}" data-id="${inv.id}" data-total="${Number(inv.total || 0)}" data-client="${escHtml(inv.client_name || '')}" data-number="${escHtml(inv.invoice_number || '')}">${jobCostsByInvoice.has(inv.id) ? '✓ Cost' : 'Cost / Profit'}</button>
             <button class="btn btn-sm btn-danger btn-delete" data-id="${inv.id}">Delete</button>
             ${isParent ? `<button class="btn btn-sm btn-unconsolidate" data-id="${inv.id}" data-number="${escHtml(inv.invoice_number||'')}" title="Release all original invoices back to pending">Unconsolidate</button>` : ''}
           </div>
@@ -502,12 +502,12 @@
       const row = document.createElement('div');
       row.className = 'cost-row';
       row.innerHTML =
-        `<input type="text" placeholder="Descripción" value="${escHtml(m.desc)}" data-ci="${i}" data-cf="desc"/>` +
+        `<input type="text" placeholder="Description" value="${escHtml(m.desc)}" data-ci="${i}" data-cf="desc"/>` +
         `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="0" inputmode="decimal" value="${m.amount || ''}" data-ci="${i}" data-cf="amount"/></div>` +
-        `<button class="cost-del" type="button" data-cdel="${i}" title="Quitar">×</button>`;
+        `<button class="cost-del" type="button" data-cdel="${i}" title="Remove">×</button>`;
       box.appendChild(row);
     });
-    if (costDraftMaterials.length === 0) box.innerHTML = '<div class="cost-empty">Sin materiales.</div>';
+    if (costDraftMaterials.length === 0) box.innerHTML = '<div class="cost-empty">No materials yet.</div>';
   }
 
   function renderCostHelpers() {
@@ -520,20 +520,20 @@
       row.className = 'cost-row helper' + (mode === 'flat' ? ' flat' : '');
       let fields;
       if (mode === 'flat') {
-        fields = `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="por día / trabajo" inputmode="decimal" value="${h.flat || ''}" data-hi="${i}" data-hf="flat"/></div>`;
+        fields = `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="per day / job" inputmode="decimal" value="${h.flat || ''}" data-hi="${i}" data-hf="flat"/></div>`;
       } else {
         fields =
           `<input class="cost-hrs" type="number" min="0" step="0.25" placeholder="hrs" inputmode="decimal" value="${h.hours || ''}" data-hi="${i}" data-hf="hours"/>` +
           `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="22" inputmode="decimal" value="${h.rate || ''}" data-hi="${i}" data-hf="rate"/></div>`;
       }
       row.innerHTML =
-        `<input type="text" placeholder="Ayudante" value="${escHtml(h.name)}" data-hi="${i}" data-hf="name"/>` +
-        `<select data-hi="${i}" data-hf="mode"><option value="hour"${mode === 'hour' ? ' selected' : ''}>Por hora</option><option value="flat"${mode === 'flat' ? ' selected' : ''}>Precio fijo</option></select>` +
+        `<input type="text" placeholder="Helper" value="${escHtml(h.name)}" data-hi="${i}" data-hf="name"/>` +
+        `<select data-hi="${i}" data-hf="mode"><option value="hour"${mode === 'hour' ? ' selected' : ''}>Hourly</option><option value="flat"${mode === 'flat' ? ' selected' : ''}>Flat rate</option></select>` +
         fields +
-        `<button class="cost-del" type="button" data-hdel="${i}" title="Quitar">×</button>`;
+        `<button class="cost-del" type="button" data-hdel="${i}" title="Remove">×</button>`;
       box.appendChild(row);
     });
-    if (costDraftHelpers.length === 0) box.innerHTML = '<div class="cost-empty">Sin ayudantes en este trabajo.</div>';
+    if (costDraftHelpers.length === 0) box.innerHTML = '<div class="cost-empty">No helpers on this job.</div>';
   }
 
   function recalcCost() {
@@ -555,23 +555,23 @@
     const laborVal = $('#cost-r-labor');
     if (ownLaborAsCost) {
       laborRow.classList.add('sub');
-      laborLabel.textContent = '− Tu sueldo personal';
+      laborLabel.textContent = '− Your personal salary';
       laborVal.textContent = '−' + currency.format(labor);
     } else {
       laborRow.classList.remove('sub');
-      laborLabel.textContent = 'Tu mano de obra (capital reinvertido)';
+      laborLabel.textContent = 'Your labor (reinvested capital)';
       laborVal.textContent = currency.format(labor);
     }
 
     const g = $('#cost-r-gross');
     g.textContent = currency.format(headline);
     g.style.color = headline >= 0 ? '#2f9e44' : '#c0392b';
-    $('#cost-r-gross-label').textContent = ownLaborAsCost ? 'Ganancia neta del trabajo' : 'Se queda en el negocio';
+    $('#cost-r-gross-label').textContent = ownLaborAsCost ? 'Job net profit' : 'Stays in the business';
 
     const pct = price > 0 ? Math.round((headline / price) * 100) : 0;
     $('#cost-r-margin').textContent = ownLaborAsCost
-      ? `${pct}% margen · los gastos fijos del mes se descuentan aparte en el panel`
-      : `${pct}% se queda · de eso, tu sueldo sombra ${currency.format(labor)} · margen del negocio ${currency.format(afterSalary)} · gastos fijos aparte`;
+      ? `${pct}% margin · monthly fixed costs are deducted separately in the panel`
+      : `${pct}% retained · of that, your shadow wage ${currency.format(labor)} · business margin ${currency.format(afterSalary)} · fixed costs separate`;
   }
 
   function openCostModal(ds) {
@@ -583,7 +583,7 @@
       ? existing.helpers.map(h => ({ name: h.name || '', mode: h.mode || 'hour', hours: h.hours, rate: h.rate, flat: h.flat })) : [];
     $('#cost-hours').value = existing ? (existing.my_hours || '') : '';
     $('#cost-rate').value = existing ? (existing.my_rate || 50) : 50;
-    $('#cost-modal-sub').textContent = `Factura #${costInvoice.number || '—'} · ${costInvoice.client || '—'} · cobrado ${currency.format(costInvoice.total)}`;
+    $('#cost-modal-sub').textContent = `Invoice #${costInvoice.number || '—'} · ${costInvoice.client || '—'} · charged ${currency.format(costInvoice.total)}`;
     renderCostMaterials();
     renderCostHelpers();
     recalcCost();
@@ -624,7 +624,7 @@
   async function saveCost() {
     if (!costInvoice) return;
     const btn = $('#btn-cost-save');
-    btn.disabled = true; btn.textContent = 'Guardando…';
+    btn.disabled = true; btn.textContent = 'Saving…';
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id || null;
@@ -634,8 +634,8 @@
       const helpers = costDraftHelpers
         .filter(h => (h.name && h.name.trim()) || (h.mode === 'flat' ? Number(h.flat) > 0 : Number(h.hours) > 0))
         .map(h => h.mode === 'flat'
-          ? { name: h.name || 'Ayudante', mode: 'flat', flat: Number(h.flat || 0) }
-          : { name: h.name || 'Ayudante', mode: 'hour', hours: Number(h.hours || 0), rate: Number(h.rate || 22) });
+          ? { name: h.name || 'Helper', mode: 'flat', flat: Number(h.flat || 0) }
+          : { name: h.name || 'Helper', mode: 'hour', hours: Number(h.hours || 0), rate: Number(h.rate || 22) });
       const payload = {
         invoice_id: costInvoice.id,
         user_id: userId,
@@ -645,17 +645,17 @@
         helpers,
       };
       const { error } = await supabase.from('job_costs').upsert(payload, { onConflict: 'invoice_id' });
-      if (error) { console.error('Save cost failed:', error); showToast('No se pudo guardar el costo: ' + error.message); return; }
-      showToast('Costo guardado ✓');
+      if (error) { console.error('Save cost failed:', error); showToast('Could not save the cost: ' + error.message); return; }
+      showToast('Cost saved ✓');
       closeCostModal();
       await loadProfitData();
       loadHistory();
       loadKPIs();
     } catch (err) {
       console.error('Unexpected error saving cost:', err);
-      showToast('Error al guardar el costo.');
+      showToast('Error saving the cost.');
     } finally {
-      btn.disabled = false; btn.textContent = 'Guardar costo';
+      btn.disabled = false; btn.textContent = 'Save cost';
     }
   }
 
@@ -663,9 +663,9 @@
   const overheadBackdrop = $('#overhead-modal-backdrop');
   let overheadDraft = []; // [{label, amount}]
   const DEFAULT_OVERHEAD = [
-    { label: 'Seguro de la compañía', amount: 150 },
-    { label: 'Desgaste de herramientas', amount: 120 },
-    { label: 'Carro (gas + desgaste)', amount: 140 },
+    { label: 'Company insurance', amount: 150 },
+    { label: 'Tool wear', amount: 120 },
+    { label: 'Vehicle (gas + wear)', amount: 140 },
   ];
 
   function renderOverheadItems() {
@@ -676,9 +676,9 @@
       const row = document.createElement('div');
       row.className = 'cost-row';
       row.innerHTML =
-        `<input type="text" placeholder="Concepto" value="${escHtml(o.label)}" data-oi="${i}" data-of="label"/>` +
+        `<input type="text" placeholder="Item" value="${escHtml(o.label)}" data-oi="${i}" data-of="label"/>` +
         `<div class="cost-money"><span>$</span><input type="number" min="0" step="1" placeholder="0" inputmode="decimal" value="${o.amount || ''}" data-oi="${i}" data-of="amount"/></div>` +
-        `<button class="cost-del" type="button" data-odel="${i}" title="Quitar">×</button>`;
+        `<button class="cost-del" type="button" data-odel="${i}" title="Remove">×</button>`;
       box.appendChild(row);
     });
     const total = overheadDraft.reduce((s, o) => s + Number(o.amount || 0), 0);
@@ -714,13 +714,13 @@
 
   async function saveOverhead() {
     const btn = $('#btn-overhead-save');
-    btn.disabled = true; btn.textContent = 'Guardando…';
+    btn.disabled = true; btn.textContent = 'Saving…';
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id || null;
       const items = overheadDraft
         .filter(o => (o.label && o.label.trim()) || Number(o.amount) > 0)
-        .map(o => ({ label: o.label || 'Gasto', amount: Number(o.amount || 0) }));
+        .map(o => ({ label: o.label || 'Cost', amount: Number(o.amount || 0) }));
       const laborAsCost = !!($('#overhead-labor-toggle') && $('#overhead-labor-toggle').checked);
       let error;
       if (overheadRowId) {
@@ -728,16 +728,16 @@
       } else {
         ({ error } = await supabase.from('overhead_settings').insert({ user_id: userId, items, own_labor_as_cost: laborAsCost }));
       }
-      if (error) { console.error('Save overhead failed:', error); showToast('No se pudieron guardar los gastos fijos: ' + error.message); return; }
-      showToast('Gastos fijos guardados ✓');
+      if (error) { console.error('Save overhead failed:', error); showToast('Could not save fixed costs: ' + error.message); return; }
+      showToast('Fixed costs saved ✓');
       overheadBackdrop.style.display = 'none';
       await loadProfitData();
       loadKPIs();
     } catch (err) {
       console.error('Unexpected error saving overhead:', err);
-      showToast('Error al guardar los gastos fijos.');
+      showToast('Error saving fixed costs.');
     } finally {
-      btn.disabled = false; btn.textContent = 'Guardar gastos fijos';
+      btn.disabled = false; btn.textContent = 'Save fixed costs';
     }
   }
 
@@ -997,23 +997,23 @@
     setTxt('#kpi-net-month', currency.format(netThisMonth));
     setTxt('#kpi-net-ytd', currency.format(netYtd));
     setTxt('#kpi-net-overhead', currency.format(overheadMonthly));
-    setTxt('#kpi-net-label', ownLaborAsCost ? 'Ganancia neta — este mes' : 'Se queda en el negocio — este mes');
+    setTxt('#kpi-net-label', ownLaborAsCost ? 'Net profit — this month' : 'Stays in the business — this month');
     const netMonthEl = $('#kpi-net-month');
     if (netMonthEl) netMonthEl.style.color = netThisMonth >= 0 ? '#2f9e44' : '#c0392b';
     const nmDetail = $('#kpi-net-month-detail');
     if (nmDetail) {
-      const costLabel = ownLaborAsCost ? 'costos (con tu sueldo)' : 'materiales + ayudantes';
+      const costLabel = ownLaborAsCost ? 'costs (incl. your salary)' : 'materials + helpers';
       nmDetail.textContent = (thisMonthObj && thisMonthObj.revenue > 0)
-        ? `${currency.format(thisMonthObj.revenue)} cobrado − ${currency.format(thisMonthObj.cost)} ${costLabel} − ${currency.format(overheadMonthly)} fijos`
-        : 'Sin trabajos cobrados este mes';
+        ? `${currency.format(thisMonthObj.revenue)} collected − ${currency.format(thisMonthObj.cost)} ${costLabel} − ${currency.format(overheadMonthly)} fixed`
+        : 'No paid jobs this month';
     }
     const cov = $('#kpi-net-coverage');
     if (cov) {
       cov.textContent = paidTotalCount > 0
         ? (paidWithCost >= paidTotalCount
-            ? `Costo capturado en las ${paidTotalCount} facturas cobradas ✓`
-            : `Costo capturado en ${paidWithCost} de ${paidTotalCount} facturas cobradas — captura el resto para una neta exacta`)
-        : 'Marca facturas como pagadas y captura su costo para ver tu ganancia neta.';
+            ? `Cost captured on all ${paidTotalCount} paid invoices ✓`
+            : `Cost captured on ${paidWithCost} of ${paidTotalCount} paid invoices — capture the rest for an exact net`)
+        : 'Mark invoices as paid and capture their cost to see your net profit.';
     }
 
     renderProfitChart(months12);
