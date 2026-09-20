@@ -541,16 +541,37 @@
     const mat = costDraftMaterials.reduce((s, m) => s + Number(m.amount || 0), 0);
     const labor = Number($('#cost-hours').value || 0) * Number($('#cost-rate').value || 0);
     const help = costDraftHelpers.reduce((s, h) => s + helperCost(h), 0);
-    const gross = price - mat - labor - help;
+    const cashOut = mat + help;                 // real money out of pocket
+    const stays = price - cashOut;              // capital retained (labor not withdrawn)
+    const afterSalary = price - cashOut - labor; // profit above paying yourself
+    const headline = ownLaborAsCost ? afterSalary : stays;
+
     $('#cost-r-price').textContent = currency.format(price);
     $('#cost-r-mat').textContent = '−' + currency.format(mat);
-    $('#cost-r-labor').textContent = '−' + currency.format(labor);
     $('#cost-r-help').textContent = '−' + currency.format(help);
+
+    const laborRow = $('#cost-r-labor-row');
+    const laborLabel = $('#cost-r-labor-label');
+    const laborVal = $('#cost-r-labor');
+    if (ownLaborAsCost) {
+      laborRow.classList.add('sub');
+      laborLabel.textContent = '− Tu sueldo personal';
+      laborVal.textContent = '−' + currency.format(labor);
+    } else {
+      laborRow.classList.remove('sub');
+      laborLabel.textContent = 'Tu mano de obra (capital reinvertido)';
+      laborVal.textContent = currency.format(labor);
+    }
+
     const g = $('#cost-r-gross');
-    g.textContent = currency.format(gross);
-    g.style.color = gross >= 0 ? '#2f9e44' : '#c0392b';
-    const pct = price > 0 ? Math.round((gross / price) * 100) : 0;
-    $('#cost-r-margin').textContent = `${pct}% margen · los gastos fijos del mes se descuentan aparte en el panel`;
+    g.textContent = currency.format(headline);
+    g.style.color = headline >= 0 ? '#2f9e44' : '#c0392b';
+    $('#cost-r-gross-label').textContent = ownLaborAsCost ? 'Ganancia neta del trabajo' : 'Se queda en el negocio';
+
+    const pct = price > 0 ? Math.round((headline / price) * 100) : 0;
+    $('#cost-r-margin').textContent = ownLaborAsCost
+      ? `${pct}% margen · los gastos fijos del mes se descuentan aparte en el panel`
+      : `${pct}% se queda · de eso, tu sueldo sombra ${currency.format(labor)} · margen del negocio ${currency.format(afterSalary)} · gastos fijos aparte`;
   }
 
   function openCostModal(ds) {
@@ -668,6 +689,8 @@
     overheadDraft = overheadItems.length
       ? overheadItems.map(o => ({ label: o.label || '', amount: o.amount }))
       : DEFAULT_OVERHEAD.map(o => ({ ...o }));
+    const toggle = $('#overhead-labor-toggle');
+    if (toggle) toggle.checked = ownLaborAsCost;
     renderOverheadItems();
     overheadBackdrop.style.display = 'flex';
   }
@@ -698,11 +721,12 @@
       const items = overheadDraft
         .filter(o => (o.label && o.label.trim()) || Number(o.amount) > 0)
         .map(o => ({ label: o.label || 'Gasto', amount: Number(o.amount || 0) }));
+      const laborAsCost = !!($('#overhead-labor-toggle') && $('#overhead-labor-toggle').checked);
       let error;
       if (overheadRowId) {
-        ({ error } = await supabase.from('overhead_settings').update({ items }).eq('id', overheadRowId));
+        ({ error } = await supabase.from('overhead_settings').update({ items, own_labor_as_cost: laborAsCost }).eq('id', overheadRowId));
       } else {
-        ({ error } = await supabase.from('overhead_settings').insert({ user_id: userId, items }));
+        ({ error } = await supabase.from('overhead_settings').insert({ user_id: userId, items, own_labor_as_cost: laborAsCost }));
       }
       if (error) { console.error('Save overhead failed:', error); showToast('No se pudieron guardar los gastos fijos: ' + error.message); return; }
       showToast('Gastos fijos guardados ✓');
@@ -764,18 +788,30 @@
   let overheadItems = [];            // [{label, amount}]
   let overheadMonthly = 0;           // sum of overheadItems
   let overheadRowId = null;          // existing overhead_settings row id (if any)
+  // How the owner's own labor is treated. false (default) = retained capital
+  // (not deducted, shown as a "shadow wage" reference); true = real personal
+  // salary (deducted as a cost). Toggled in the overhead settings modal.
+  let ownLaborAsCost = false;
 
   function helperCost(h) {
     if (!h) return 0;
     return h.mode === 'flat' ? Number(h.flat || 0) : Number(h.hours || 0) * Number(h.rate || 0);
   }
-  // Returns the total captured cost for a job_costs row, or null if none captured.
-  function costOfRow(c) {
+  // Real cash out for a job: materials + helpers (always leaves your pocket).
+  function cashOutOfRow(c) {
     if (!c) return null;
     const mat = (c.materials || []).reduce((s, m) => s + Number(m.amount || 0), 0);
-    const labor = Number(c.my_hours || 0) * Number(c.my_rate || 0);
     const help = (c.helpers || []).reduce((s, h) => s + helperCost(h), 0);
-    return mat + labor + help;
+    return mat + help;
+  }
+  // Your own labor (shadow wage) for a job.
+  function laborOfRow(c) {
+    return c ? Number(c.my_hours || 0) * Number(c.my_rate || 0) : 0;
+  }
+  // The cost actually deducted from profit, mode-aware. null if no costs captured.
+  function costOfRow(c) {
+    if (!c) return null;
+    return cashOutOfRow(c) + (ownLaborAsCost ? laborOfRow(c) : 0);
   }
 
   async function loadProfitData() {
@@ -790,6 +826,7 @@
       overheadRowId = row ? row.id : null;
       overheadItems = row && Array.isArray(row.items) ? row.items : [];
       overheadMonthly = overheadItems.reduce((s, i) => s + Number(i.amount || 0), 0);
+      ownLaborAsCost = row ? !!row.own_labor_as_cost : false;
     } catch (err) {
       console.error('Load profit data failed:', err);
     }
@@ -960,12 +997,14 @@
     setTxt('#kpi-net-month', currency.format(netThisMonth));
     setTxt('#kpi-net-ytd', currency.format(netYtd));
     setTxt('#kpi-net-overhead', currency.format(overheadMonthly));
+    setTxt('#kpi-net-label', ownLaborAsCost ? 'Ganancia neta — este mes' : 'Se queda en el negocio — este mes');
     const netMonthEl = $('#kpi-net-month');
     if (netMonthEl) netMonthEl.style.color = netThisMonth >= 0 ? '#2f9e44' : '#c0392b';
     const nmDetail = $('#kpi-net-month-detail');
     if (nmDetail) {
+      const costLabel = ownLaborAsCost ? 'costos (con tu sueldo)' : 'materiales + ayudantes';
       nmDetail.textContent = (thisMonthObj && thisMonthObj.revenue > 0)
-        ? `${currency.format(thisMonthObj.revenue)} cobrado − ${currency.format(thisMonthObj.cost)} costos − ${currency.format(overheadMonthly)} fijos`
+        ? `${currency.format(thisMonthObj.revenue)} cobrado − ${currency.format(thisMonthObj.cost)} ${costLabel} − ${currency.format(overheadMonthly)} fijos`
         : 'Sin trabajos cobrados este mes';
     }
     const cov = $('#kpi-net-coverage');

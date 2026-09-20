@@ -434,7 +434,7 @@
         <!-- Real net-profit band (revenue − costs − overhead) -->
         <div class="kpi-net-band" id="kpi-net-band">
           <div class="kpi-net-main">
-            <span class="kpi-net-label">Ganancia neta — este mes</span>
+            <span class="kpi-net-label" id="kpi-net-label">Ganancia neta — este mes</span>
             <span class="kpi-net-value" id="kpi-net-month">$0</span>
             <span class="kpi-net-sub" id="kpi-net-month-detail">—</span>
           </div>
@@ -605,9 +605,9 @@
       <div class="cost-result" id="cost-result">
         <div class="cost-result-row"><span>Cobrado</span><span id="cost-r-price">$0.00</span></div>
         <div class="cost-result-row sub"><span>− Materiales</span><span id="cost-r-mat">$0.00</span></div>
-        <div class="cost-result-row sub"><span>− Mano de obra (tú)</span><span id="cost-r-labor">$0.00</span></div>
         <div class="cost-result-row sub"><span>− Ayudantes</span><span id="cost-r-help">$0.00</span></div>
-        <div class="cost-result-row total"><span>Ganancia bruta del trabajo</span><span id="cost-r-gross">$0.00</span></div>
+        <div class="cost-result-row" id="cost-r-labor-row"><span id="cost-r-labor-label">Tu mano de obra (capital)</span><span id="cost-r-labor">$0.00</span></div>
+        <div class="cost-result-row total"><span id="cost-r-gross-label">Se queda en el negocio</span><span id="cost-r-gross">$0.00</span></div>
         <div class="cost-result-note" id="cost-r-margin">0% margen · los gastos fijos del mes se descuentan aparte en el panel</div>
       </div>
 
@@ -631,6 +631,12 @@
         <div id="overhead-items"></div>
       </div>
       <div class="cost-result-row total" style="margin-top:6px"><span>Total fijo / mes</span><span id="overhead-total">$0.00</span></div>
+
+      <label class="cost-toggle">
+        <input type="checkbox" id="overhead-labor-toggle"/>
+        <span><b>Contar mi mano de obra como sueldo personal (gasto real).</b><br>Déjalo apagado mientras reinviertes tu tiempo como capital del negocio. Actívalo el día que corras el negocio al 100% y te pagues un sueldo — ahí tu mano de obra empezará a descontarse como costo.</span>
+      </label>
+
       <div class="consolidate-actions">
         <button class="btn btn-ghost" id="btn-overhead-dismiss" type="button">Cancelar</button>
         <button class="btn btn-primary" id="btn-overhead-save" type="button">Guardar gastos fijos</button>

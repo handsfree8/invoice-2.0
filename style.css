@@ -1321,6 +1321,11 @@ input.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(
 .cost-result-row.total span:last-child { font-weight: 800; font-size: 18px; color: #2f9e44; }
 .cost-result-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
 .btn-cost-set { background: #e6f6ec !important; color: #1d7a44 !important; border-color: #b6e2c6 !important; }
+.cost-toggle { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 12px 14px; background: var(--purple-light); border: 1px solid var(--purple-soft); border-radius: var(--radius-sm); cursor: pointer; }
+.cost-toggle input { margin-top: 2px; width: 16px; height: 16px; flex: none; accent-color: var(--purple-mid); cursor: pointer; }
+.cost-toggle span { font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.cost-toggle span b { color: var(--text); }
+#cost-r-labor-row:not(.sub) span:last-child { color: var(--purple-mid); font-weight: 600; }
 
 @media (max-width: 640px) {
   .kpi-net-band { grid-template-columns: 1fr; }
