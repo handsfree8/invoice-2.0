@@ -31,10 +31,7 @@ function mockFetch({ authOk = true, resendOk = true } = {}) {
   return calls;
 }
 
-test.beforeEach(() => {
-  process.env.RESEND_API_KEY = 'test-key';
-  process.env.SUPABASE_ANON_KEY = 'test-anon-key';
-});
+test.beforeEach(() => { process.env.RESEND_API_KEY = 'test-key'; });
 
 test('rejects non-POST', async () => {
   const res = mockRes(); mockFetch();

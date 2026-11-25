@@ -1,4 +1,5 @@
 const SUPABASE_URL = 'https://wrlwhnjqnsfkpyihumqd.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_xmLLVF_W4gQIhIAewv5zRg_YgKAH3wI';
 const FROM = 'Rose Legacy Home Solutions <no-reply@roselegacyhs.com>';
 const REPLY_TO = 'roselegacyhs@icloud.com';
 // Vercel caps request bodies at 4.5 MB; leave headroom for the JSON envelope.
@@ -26,11 +27,8 @@ module.exports = async function handler(req, res) {
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return res.status(401).json({ error: 'Not signed in' });
 
-  const anonKey = process.env.SUPABASE_ANON_KEY;
-  if (!anonKey) return res.status(500).json({ error: 'Email is not configured on the server' });
-
   const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { Authorization: `Bearer ${token}`, apikey: anonKey },
+    headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
   });
   if (!userRes.ok) return res.status(401).json({ error: 'Session expired — sign in again' });
 
