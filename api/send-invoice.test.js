@@ -19,10 +19,11 @@ const goodBody = {
 function req(over = {}) {
   return { method: 'POST', headers: { authorization: 'Bearer tok' }, body: { ...goodBody }, ...over };
 }
-function mockFetch({ authOk = true, resendOk = true } = {}) {
+function mockFetch({ authOk = true, resendOk = true, throwOn = null } = {}) {
   const calls = [];
   global.fetch = async (url, opts) => {
     calls.push({ url, opts });
+    if (throwOn && url.includes(throwOn)) throw new TypeError('fetch failed');
     if (url.endsWith('/auth/v1/user')) {
       return { ok: authOk, status: authOk ? 200 : 401, json: async () => ({ id: 'u1' }) };
     }
@@ -46,9 +47,10 @@ test('rejects missing bearer token', async () => {
 });
 
 test('rejects invalid session', async () => {
-  const res = mockRes(); mockFetch({ authOk: false });
+  const res = mockRes(); const calls = mockFetch({ authOk: false });
   await handler(req(), res);
   assert.strictEqual(res.statusCode, 401);
+  assert.strictEqual(calls.find(c => c.url === 'https://api.resend.com/emails'), undefined, 'Resend not called');
 });
 
 test('rejects bad email', async () => {
@@ -100,4 +102,36 @@ test('502 when Resend fails', async () => {
   const res = mockRes(); mockFetch({ resendOk: false });
   await handler(req(), res);
   assert.strictEqual(res.statusCode, 502);
+});
+
+test('502 JSON when Supabase session check throws', async () => {
+  const res = mockRes(); mockFetch({ throwOn: '/auth/v1/user' });
+  await handler(req(), res);
+  assert.strictEqual(res.statusCode, 502);
+  assert.deepStrictEqual(res.body, { error: 'Could not verify your session — try again' });
+});
+
+test('502 JSON when Resend fetch throws', async () => {
+  const res = mockRes(); mockFetch({ throwOn: 'api.resend.com' });
+  await handler(req(), res);
+  assert.strictEqual(res.statusCode, 502);
+  assert.deepStrictEqual(res.body, { error: 'Could not reach the email service — try again' });
+});
+
+test('sanitizes invoice number in filename and subject', async () => {
+  const res = mockRes(); const calls = mockFetch();
+  await handler(req({ body: { ...goodBody, invoiceNumber: 'INV/../x"\nA' } }), res);
+  assert.strictEqual(res.statusCode, 200);
+  const payload = JSON.parse(calls.find(c => c.url === 'https://api.resend.com/emails').opts.body);
+  assert.strictEqual(payload.attachments[0].filename, 'invoice-INV_.._x__A.pdf');
+  assert.ok(!payload.subject.includes('\n'), 'subject has no newline');
+});
+
+test('caps invoice number at 50 chars', async () => {
+  const res = mockRes(); const calls = mockFetch();
+  const long = 'A'.repeat(80);
+  await handler(req({ body: { ...goodBody, invoiceNumber: long } }), res);
+  const payload = JSON.parse(calls.find(c => c.url === 'https://api.resend.com/emails').opts.body);
+  assert.strictEqual(payload.attachments[0].filename, `invoice-${'A'.repeat(50)}.pdf`);
+  assert.strictEqual(payload.subject, `Invoice ${'A'.repeat(50)} from Rose Legacy Home Solutions`);
 });

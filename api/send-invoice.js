@@ -27,9 +27,14 @@ module.exports = async function handler(req, res) {
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return res.status(401).json({ error: 'Not signed in' });
 
-  const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-  });
+  let userRes;
+  try {
+    userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+    });
+  } catch {
+    return res.status(502).json({ error: 'Could not verify your session — try again' });
+  }
   if (!userRes.ok) return res.status(401).json({ error: 'Session expired — sign in again' });
 
   const { to, pdfBase64, invoiceNumber, clientName, total } = req.body || {};
@@ -41,19 +46,26 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Email is not configured on the server' });
 
-  const number = String(invoiceNumber || '').trim() || 'invoice';
-  const sendRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: FROM,
-      reply_to: REPLY_TO,
-      to: [recipient],
-      subject: `Invoice ${number} from Rose Legacy Home Solutions`,
-      html: buildHtml({ clientName, invoiceNumber: number, total }),
-      attachments: [{ filename: `invoice-${number}.pdf`, content: pdfBase64 }],
-    }),
-  });
+  const number = String(invoiceNumber || '').trim().slice(0, 50) || 'invoice';
+  const subjectNumber = number.replace(/[\x00-\x1f\x7f]/g, ' ');
+  const fileNumber = number.replace(/[^A-Za-z0-9._-]/g, '_');
+  let sendRes;
+  try {
+    sendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: FROM,
+        reply_to: REPLY_TO,
+        to: [recipient],
+        subject: `Invoice ${subjectNumber} from Rose Legacy Home Solutions`,
+        html: buildHtml({ clientName, invoiceNumber: number, total }),
+        attachments: [{ filename: `invoice-${fileNumber}.pdf`, content: pdfBase64 }],
+      }),
+    });
+  } catch {
+    return res.status(502).json({ error: 'Could not reach the email service — try again' });
+  }
   const result = await sendRes.json().catch(() => ({}));
   if (!sendRes.ok) return res.status(502).json({ error: result.message || 'Email service rejected the message' });
 
