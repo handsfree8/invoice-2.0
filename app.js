@@ -2038,13 +2038,23 @@
   const emailErrEl = $('#email-error');
   const emailSendBtn = $('#btn-email-send');
 
-  function closeEmailModal() { emailBackdrop.style.display = 'none'; }
+  const emailCancelBtn = $('#btn-email-cancel');
+  const emailOpenBtn = $('#btn-email-invoice');
+  let emailSending = false;
 
-  $('#btn-email-invoice').addEventListener('click', () => {
+  function emailModalOpen() { return emailBackdrop.style.display !== 'none'; }
+  function closeEmailModal() {
+    if (emailSending) return;
+    emailBackdrop.style.display = 'none';
+    emailOpenBtn.focus();
+  }
+
+  emailOpenBtn.addEventListener('click', () => {
     const data = collectData();
     const problems = validateInvoice(data);
     if (problems.length) { showToast(problems[0]); return; }
-    emailToEl.value = linkedClientEmail;
+    emailToEl.value = linkedClientEmail ||
+      (allProperties.find(p => p.id === linkedPropertyId)?.client_email) || '';
     emailErrEl.textContent = '';
     $('#email-modal-sub').textContent =
       `Invoice ${data.invoice.number || ''} for ${data.invoice.client || 'client'} — the PDF will be attached.`;
@@ -2052,49 +2062,57 @@
     emailToEl.focus();
   });
 
-  $('#btn-email-cancel').addEventListener('click', closeEmailModal);
+  emailCancelBtn.addEventListener('click', closeEmailModal);
   emailBackdrop.addEventListener('click', e => { if (e.target === emailBackdrop) closeEmailModal(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && emailModalOpen() && !emailSending) closeEmailModal();
+  });
   emailToEl.addEventListener('keydown', e => { if (e.key === 'Enter') emailSendBtn.click(); });
 
   emailSendBtn.addEventListener('click', async () => {
-    const to = emailToEl.value.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { emailErrEl.textContent = 'Enter a valid email address.'; return; }
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-    if (!token) { emailErrEl.textContent = 'Your session expired — sign in again.'; return; }
-
-    const data = collectData();
-    const calc = computeTotals();
+    if (emailSending) return;
+    emailSending = true;
     emailSendBtn.disabled = true;
+    emailCancelBtn.disabled = true;
     emailSendBtn.textContent = 'Sending…';
     emailErrEl.textContent = '';
-    loadLogoForPDF(async logoImg => {
-      try {
-        const doc = buildInvoicePDF(data, calc, logoImg);
-        const pdfBase64 = doc.output('datauristring').split(',')[1];
-        const res = await fetch('/api/send-invoice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            to,
-            pdfBase64,
-            invoiceNumber: data.invoice.number,
-            clientName: data.invoice.client,
-            total: currency.format(calc.total),
-          }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) { emailErrEl.textContent = body.error || 'Could not send the email.'; return; }
-        closeEmailModal();
-        showToast(`Invoice emailed to ${to} ✓`);
-      } catch (err) {
-        console.error('Email invoice failed:', err);
-        emailErrEl.textContent = 'Could not send the email. Check your connection and try again.';
-      } finally {
-        emailSendBtn.disabled = false;
-        emailSendBtn.textContent = 'Send';
-      }
-    });
+    try {
+      const to = emailToEl.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { emailErrEl.textContent = 'Enter a valid email address.'; return; }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) { emailErrEl.textContent = 'Your session expired — sign in again.'; return; }
+
+      const data = collectData();
+      const calc = computeTotals();
+      const logoImg = await new Promise(r => loadLogoForPDF(r));
+      const doc = buildInvoicePDF(data, calc, logoImg);
+      const pdfBase64 = doc.output('datauristring').split(',')[1];
+      const res = await fetch('/api/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          to,
+          pdfBase64,
+          invoiceNumber: data.invoice.number,
+          clientName: data.invoice.client,
+          total: currency.format(calc.total),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { emailErrEl.textContent = body.error || `Could not send the email (error ${res.status}).`; return; }
+      emailSending = false;
+      closeEmailModal();
+      showToast(`Invoice emailed to ${to} ✓`);
+    } catch (err) {
+      console.error('Email invoice failed:', err);
+      emailErrEl.textContent = 'Could not send the email. Check your connection and try again.';
+    } finally {
+      emailSending = false;
+      emailSendBtn.disabled = false;
+      emailCancelBtn.disabled = false;
+      emailSendBtn.textContent = 'Send';
+    }
   });
 
 
