@@ -19,20 +19,23 @@ const goodBody = {
 function req(over = {}) {
   return { method: 'POST', headers: { authorization: 'Bearer tok' }, body: { ...goodBody }, ...over };
 }
-function mockFetch({ authOk = true, resendOk = true, throwOn = null } = {}) {
+function mockFetch({ authOk = true, resendOk = true, throwOn = null, userEmail = 'owner@example.com' } = {}) {
   const calls = [];
   global.fetch = async (url, opts) => {
     calls.push({ url, opts });
     if (throwOn && url.includes(throwOn)) throw new TypeError('fetch failed');
     if (url.endsWith('/auth/v1/user')) {
-      return { ok: authOk, status: authOk ? 200 : 401, json: async () => ({ id: 'u1' }) };
+      return { ok: authOk, status: authOk ? 200 : 401, json: async () => ({ id: 'u1', email: userEmail }) };
     }
     return { ok: resendOk, status: resendOk ? 200 : 422, json: async () => (resendOk ? { id: 'em_1' } : { message: 'bad' }) };
   };
   return calls;
 }
 
-test.beforeEach(() => { process.env.RESEND_API_KEY = 'test-key'; });
+test.beforeEach(() => {
+  process.env.RESEND_API_KEY = 'test-key';
+  process.env.ALLOWED_SENDER_EMAILS = 'Owner@Example.com, other@example.com';
+});
 
 test('rejects non-POST', async () => {
   const res = mockRes(); mockFetch();
@@ -134,4 +137,21 @@ test('caps invoice number at 50 chars', async () => {
   const payload = JSON.parse(calls.find(c => c.url === 'https://api.resend.com/emails').opts.body);
   assert.strictEqual(payload.attachments[0].filename, `invoice-${'A'.repeat(50)}.pdf`);
   assert.strictEqual(payload.subject, `Invoice ${'A'.repeat(50)} from Rose Legacy Home Solutions`);
+});
+
+test('403 when signed-in user is not on the sender allowlist', async () => {
+  const res = mockRes(); const calls = mockFetch({ userEmail: 'stranger@example.com' });
+  await handler(req(), res);
+  assert.strictEqual(res.statusCode, 403);
+  assert.deepStrictEqual(res.body, { error: 'This account is not allowed to send invoices' });
+  assert.strictEqual(calls.find(c => c.url === 'https://api.resend.com/emails'), undefined, 'Resend not called');
+});
+
+test('500 and never sends when ALLOWED_SENDER_EMAILS is unset', async () => {
+  delete process.env.ALLOWED_SENDER_EMAILS;
+  const res = mockRes(); const calls = mockFetch();
+  await handler(req(), res);
+  assert.strictEqual(res.statusCode, 500);
+  assert.deepStrictEqual(res.body, { error: 'Email sending is not configured on the server' });
+  assert.strictEqual(calls.find(c => c.url === 'https://api.resend.com/emails'), undefined, 'Resend not called');
 });

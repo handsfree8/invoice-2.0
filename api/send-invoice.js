@@ -37,6 +37,15 @@ module.exports = async function handler(req, res) {
   }
   if (!userRes.ok) return res.status(401).json({ error: 'Session expired — sign in again' });
 
+  const user = await userRes.json().catch(() => ({}));
+  const allowed = (process.env.ALLOWED_SENDER_EMAILS || '')
+    .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  if (!allowed.length) return res.status(500).json({ error: 'Email sending is not configured on the server' });
+  const userEmail = String(user?.email || '').trim().toLowerCase();
+  if (!userEmail || !allowed.includes(userEmail)) {
+    return res.status(403).json({ error: 'This account is not allowed to send invoices' });
+  }
+
   const { to, pdfBase64, invoiceNumber, clientName, total } = req.body || {};
   const recipient = String(to || '').trim();
   if (!EMAIL_RE.test(recipient)) return res.status(400).json({ error: 'Enter a valid email address' });
