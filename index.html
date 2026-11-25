@@ -110,6 +110,10 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download Invoice PDF
         </button>
+        <button id="btn-email-invoice" class="btn btn-ghost">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+          Email Invoice
+        </button>
       </div>
     </div>
 
@@ -614,6 +618,23 @@
       <div class="consolidate-actions">
         <button class="btn btn-ghost" id="btn-cost-dismiss" type="button">Cancel</button>
         <button class="btn btn-primary" id="btn-cost-save" type="button">Save cost</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Email invoice modal -->
+  <div id="email-modal-backdrop" class="consolidate-modal-backdrop" style="display:none;">
+    <div class="consolidate-modal">
+      <h2>Email Invoice</h2>
+      <p class="consolidate-modal-sub" id="email-modal-sub">The invoice PDF will be attached.</p>
+      <label class="field">
+        <span class="field-label">Send to</span>
+        <input id="email-to" type="email" class="field-input" placeholder="client@example.com" autocomplete="email"/>
+      </label>
+      <p id="email-error" style="color:#b91c1c;font-size:13px;margin:8px 0 0;min-height:1em;"></p>
+      <div class="consolidate-actions">
+        <button class="btn btn-ghost" id="btn-email-cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="btn-email-send" type="button">Send</button>
       </div>
     </div>
   </div>

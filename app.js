@@ -109,6 +109,7 @@
   /* ── Work-order link (?ticket=<uuid>) ────────────── */
   let linkedTicketId = null;
   let linkedPropertyId = null;
+  let linkedClientEmail = '';
   let ticketPrefilled = false;
   // Tracks an already-saved invoice loaded from history, so re-downloading it
   // doesn't insert a duplicate row. null = this is a brand-new invoice.
@@ -225,6 +226,7 @@
 
     function linkProperty(prop) {
       linkedPropertyId = prop.id;
+      linkedClientEmail = prop.client_email || '';
       if (hiddenId) hiddenId.value = prop.id;
       // Fill client name: prefer client_name field, fall back to property name
       input.value = prop.client_name || prop.name;
@@ -241,6 +243,7 @@
           <button title="Unlink property">×</button>`;
         tag.querySelector('button').addEventListener('click', () => {
           linkedPropertyId = null;
+          linkedClientEmail = '';
           if (hiddenId) hiddenId.value = '';
           tag.style.display = 'none';
         });
@@ -282,6 +285,7 @@
       // Clear link if user edits manually after linking
       if (linkedPropertyId) {
         linkedPropertyId = null;
+        linkedClientEmail = '';
         if (hiddenId) hiddenId.value = '';
         if (tag) tag.style.display = 'none';
       }
@@ -1871,162 +1875,228 @@
   }
 
   /* ── Download Invoice PDF ────────────────────────── */
-  $('#btn-generate').addEventListener('click', () => {
-    const data = collectData();
+  function buildInvoicePDF(data, calc, logoImg) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const left = 40, right = 555;
+    let y = drawPDFHeader(doc, logoImg, 48);
 
-    const problems = validateInvoice(data);
-    if (problems.length) {
-      showToast(problems[0]);
-      return;
+    // Purple accent line — sits right under the logo/header block, separating
+    // the company branding from the invoice details below.
+    doc.setDrawColor(74, 32, 128);
+    doc.setLineWidth(1.5);
+    doc.line(left, y, right, y);
+    y += 34; // generous breathing room before the INVOICE title
+
+    // Invoice title + meta
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(74, 32, 128);
+    doc.text('INVOICE', left, y);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    const dateStr = data.invoice.date || new Date().toISOString().slice(0, 10);
+    doc.text(`Invoice #: ${data.invoice.number || '—'}`, right - 160, y - 15);
+    doc.text(`Date: ${dateStr}`, right - 160, y + 1);
+    y += 30; // clear separation between the title block and the client line
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Client: `, left, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.invoice.client || '—', left + 40, y);
+    y += 14;
+    if (data.invoice.serviceAddress) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Location: ', left, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(data.invoice.serviceAddress, left + 55, y);
+      y += 14;
     }
 
-    const calc = computeTotals();
-    loadLogoForPDF(logoImg => {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      const left = 40, right = 555;
-      let y = drawPDFHeader(doc, logoImg, 48);
+    // Items table
+    const tableBody = data.items.map(it => [
+      it.description,
+      String(it.qty || 0),
+      currency.format(Number(it.price || 0)),
+      currency.format((it.qty || 0) * Number(it.price || 0)),
+    ]);
+    doc.autoTable({
+      startY: y + 8,
+      head: [['Description', 'Qty', 'Unit Price', 'Total']],
+      body: tableBody,
+      styles: { fontSize: 10, font: 'helvetica' },
+      headStyles: { fillColor: [74, 32, 128], textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 260 },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+      },
+      theme: 'grid',
+      margin: { left, right: 40 },
+    });
 
-      // Purple accent line — sits right under the logo/header block, separating
-      // the company branding from the invoice details below.
-      doc.setDrawColor(74, 32, 128);
-      doc.setLineWidth(1.5);
-      doc.line(left, y, right, y);
-      y += 34; // generous breathing room before the INVOICE title
+    let endY = doc.autoTable.previous.finalY + 20;
 
-      // Invoice title + meta
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.setTextColor(74, 32, 128);
-      doc.text('INVOICE', left, y);
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
-      const dateStr = data.invoice.date || new Date().toISOString().slice(0, 10);
-      doc.text(`Invoice #: ${data.invoice.number || '—'}`, right - 160, y - 15);
-      doc.text(`Date: ${dateStr}`, right - 160, y + 1);
-      y += 30; // clear separation between the title block and the client line
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Client: `, left, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(data.invoice.client || '—', left + 40, y);
-      y += 14;
-      if (data.invoice.serviceAddress) {
-        doc.setFont('helvetica', 'bold');
-        doc.text('Location: ', left, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(data.invoice.serviceAddress, left + 55, y);
-        y += 14;
+    // Totals
+    const rows = [
+      ['Subtotal:', currency.format(calc.sub)],
+      [`Tax (${data.invoice.taxRate || 0}%):`, currency.format(calc.tax)],
+      [`Discount (${data.invoice.discountRate || 0}%):`, '-' + currency.format(calc.disc)],
+      ['Total Amount Due:', currency.format(calc.total)],
+    ];
+    rows.forEach((row, i) => {
+      const isTotal = row[0].includes('Total Amount');
+      if (isTotal) {
+        // Separator line above the final total for visual hierarchy
+        doc.setDrawColor(225, 225, 230);
+        doc.setLineWidth(0.75);
+        doc.line(right - 180, endY + i * 16 - 11, right, endY + i * 16 - 11);
       }
+      doc.setFont('helvetica', isTotal ? 'bold' : 'normal');
+      doc.setFontSize(isTotal ? 12 : 10);
+      if (isTotal) doc.setTextColor(74, 32, 128);
+      doc.text(row[0], right - 180, endY + i * 16);
+      doc.text(row[1], right, endY + i * 16, { align: 'right' });
+      if (isTotal) doc.setTextColor(0, 0, 0);
+    });
+    endY += rows.length * 16 + 18;
 
-      // Items table
-      const tableBody = data.items.map(it => [
-        it.description,
-        String(it.qty || 0),
-        currency.format(Number(it.price || 0)),
-        currency.format((it.qty || 0) * Number(it.price || 0)),
-      ]);
-      doc.autoTable({
-        startY: y + 8,
-        head: [['Description', 'Qty', 'Unit Price', 'Total']],
-        body: tableBody,
-        styles: { fontSize: 10, font: 'helvetica' },
-        headStyles: { fillColor: [74, 32, 128], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 260 },
-          1: { halign: 'right' },
-          2: { halign: 'right' },
-          3: { halign: 'right' },
-        },
-        theme: 'grid',
-        margin: { left, right: 40 },
-      });
-
-      let endY = doc.autoTable.previous.finalY + 20;
-
-      // Totals
-      const rows = [
-        ['Subtotal:', currency.format(calc.sub)],
-        [`Tax (${data.invoice.taxRate || 0}%):`, currency.format(calc.tax)],
-        [`Discount (${data.invoice.discountRate || 0}%):`, '-' + currency.format(calc.disc)],
-        ['Total Amount Due:', currency.format(calc.total)],
-      ];
-      rows.forEach((row, i) => {
-        const isTotal = row[0].includes('Total Amount');
-        if (isTotal) {
-          // Separator line above the final total for visual hierarchy
-          doc.setDrawColor(225, 225, 230);
-          doc.setLineWidth(0.75);
-          doc.line(right - 180, endY + i * 16 - 11, right, endY + i * 16 - 11);
-        }
-        doc.setFont('helvetica', isTotal ? 'bold' : 'normal');
-        doc.setFontSize(isTotal ? 12 : 10);
-        if (isTotal) doc.setTextColor(74, 32, 128);
-        doc.text(row[0], right - 180, endY + i * 16);
-        doc.text(row[1], right, endY + i * 16, { align: 'right' });
-        if (isTotal) doc.setTextColor(0, 0, 0);
-      });
-      endY += rows.length * 16 + 18;
-
-      // Payment & Terms
-      doc.setFontSize(10);
+    // Payment & Terms
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Payment Method:', left, endY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.invoice.paymentMethod, left + 95, endY);
+    endY += 14;
+    if (data.invoice.terms) {
       doc.setFont('helvetica', 'bold');
-      doc.text('Payment Method:', left, endY);
+      doc.text('Terms:', left, endY);
       doc.setFont('helvetica', 'normal');
-      doc.text(data.invoice.paymentMethod, left + 95, endY);
+      doc.text(data.invoice.terms, left + 40, endY);
       endY += 14;
-      if (data.invoice.terms) {
-        doc.setFont('helvetica', 'bold');
-        doc.text('Terms:', left, endY);
-        doc.setFont('helvetica', 'normal');
-        doc.text(data.invoice.terms, left + 40, endY);
-        endY += 14;
-      }
+    }
 
-      // Warranty
-      endY += 8;
+    // Warranty
+    endY += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Warranty Disclaimer:', left, endY);
+    endY += 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    wrapText(doc, data.warrantyDisclaimer, 515).forEach(l => { doc.text(l, left, endY); endY += 13; });
+
+    // Notes
+    if (data.invoice.notes) {
+      endY += 6;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text('Warranty Disclaimer:', left, endY);
+      doc.text('Notes:', left, endY);
       endY += 14;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
-      wrapText(doc, data.warrantyDisclaimer, 515).forEach(l => { doc.text(l, left, endY); endY += 13; });
+      wrapText(doc, data.invoice.notes, 515).forEach(l => { doc.text(l, left, endY); endY += 13; });
+    }
 
-      // Notes
-      if (data.invoice.notes) {
-        endY += 6;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.text('Notes:', left, endY);
-        endY += 14;
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9.5);
-        wrapText(doc, data.invoice.notes, 515).forEach(l => { doc.text(l, left, endY); endY += 13; });
-      }
+    // Closing block — anchored near the bottom of the page so short invoices
+    // don't end with a large empty gap below the content.
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const footerY = pageHeight - 70;
+    if (endY < footerY) {
+      doc.setDrawColor(74, 32, 128);
+      doc.setLineWidth(0.75);
+      doc.line(left, footerY, right, footerY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(74, 32, 128);
+      doc.text('Thank you for choosing Rose Legacy Home Solutions LLC!', left, footerY + 18);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text('Questions about this invoice? Call 816 298 4828 or email roselegacyhs@icloud.com', left, footerY + 32);
+    }
+    return doc;
+  }
 
-      // Closing block — anchored near the bottom of the page so short invoices
-      // don't end with a large empty gap below the content.
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const footerY = pageHeight - 70;
-      if (endY < footerY) {
-        doc.setDrawColor(74, 32, 128);
-        doc.setLineWidth(0.75);
-        doc.line(left, footerY, right, footerY);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(74, 32, 128);
-        doc.text('Thank you for choosing Rose Legacy Home Solutions LLC!', left, footerY + 18);
-        doc.setTextColor(0, 0, 0);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.text('Questions about this invoice? Call 816 298 4828 or email roselegacyhs@icloud.com', left, footerY + 32);
-      }
-
+  $('#btn-generate').addEventListener('click', () => {
+    const data = collectData();
+    const problems = validateInvoice(data);
+    if (problems.length) { showToast(problems[0]); return; }
+    const calc = computeTotals();
+    loadLogoForPDF(logoImg => {
+      const doc = buildInvoicePDF(data, calc, logoImg);
+      const dateStr = data.invoice.date || new Date().toISOString().slice(0, 10);
       doc.save(`invoice-${data.invoice.number || dateStr}.pdf`);
       showToast('Invoice PDF downloaded ✓');
     });
   });
+
+  /* ── Email invoice (Resend via /api/send-invoice) ─── */
+  const emailBackdrop = $('#email-modal-backdrop');
+  const emailToEl = $('#email-to');
+  const emailErrEl = $('#email-error');
+  const emailSendBtn = $('#btn-email-send');
+
+  function closeEmailModal() { emailBackdrop.style.display = 'none'; }
+
+  $('#btn-email-invoice').addEventListener('click', () => {
+    const data = collectData();
+    const problems = validateInvoice(data);
+    if (problems.length) { showToast(problems[0]); return; }
+    emailToEl.value = linkedClientEmail;
+    emailErrEl.textContent = '';
+    $('#email-modal-sub').textContent =
+      `Invoice ${data.invoice.number || ''} for ${data.invoice.client || 'client'} — the PDF will be attached.`;
+    emailBackdrop.style.display = 'flex';
+    emailToEl.focus();
+  });
+
+  $('#btn-email-cancel').addEventListener('click', closeEmailModal);
+  emailBackdrop.addEventListener('click', e => { if (e.target === emailBackdrop) closeEmailModal(); });
+  emailToEl.addEventListener('keydown', e => { if (e.key === 'Enter') emailSendBtn.click(); });
+
+  emailSendBtn.addEventListener('click', async () => {
+    const to = emailToEl.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { emailErrEl.textContent = 'Enter a valid email address.'; return; }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) { emailErrEl.textContent = 'Your session expired — sign in again.'; return; }
+
+    const data = collectData();
+    const calc = computeTotals();
+    emailSendBtn.disabled = true;
+    emailSendBtn.textContent = 'Sending…';
+    emailErrEl.textContent = '';
+    loadLogoForPDF(async logoImg => {
+      try {
+        const doc = buildInvoicePDF(data, calc, logoImg);
+        const pdfBase64 = doc.output('datauristring').split(',')[1];
+        const res = await fetch('/api/send-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            to,
+            pdfBase64,
+            invoiceNumber: data.invoice.number,
+            clientName: data.invoice.client,
+            total: currency.format(calc.total),
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { emailErrEl.textContent = body.error || 'Could not send the email.'; return; }
+        closeEmailModal();
+        showToast(`Invoice emailed to ${to} ✓`);
+      } catch (err) {
+        console.error('Email invoice failed:', err);
+        emailErrEl.textContent = 'Could not send the email. Check your connection and try again.';
+      } finally {
+        emailSendBtn.disabled = false;
+        emailSendBtn.textContent = 'Send';
+      }
+    });
+  });
+
 
   /* ── Save to cloud (history) — separate from PDF download ─ */
   $('#btn-save-cloud').addEventListener('click', async () => {
@@ -2040,6 +2110,7 @@
     loadedInvoiceId = null;
     linkedTicketId = null;
     linkedPropertyId = null;
+    linkedClientEmail = '';
     $('#client-name').value = '';
     const saReset = $('#service-address'); if (saReset) saReset.value = '';
     $('#terms').value = '';
